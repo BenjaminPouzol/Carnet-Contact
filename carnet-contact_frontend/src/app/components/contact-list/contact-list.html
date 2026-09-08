@@ -1,0 +1,14 @@
+<h2>Mes contacts</h2>
+
+@if (contacts().length === 0) {
+  <p>Aucun contact enregistré.</p>
+} @else {
+  <ul>
+    @for (contact of contacts(); track contact.id) {
+      <li>
+        {{ contact.prenom }} {{ contact.nom }} — {{ contact.email }} — {{ contact.telephone }}
+        <button (click)="supprimer(contact.id)">Supprimer</button>
+      </li>
+    }
+  </ul>
+}

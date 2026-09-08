@@ -1,0 +1,21 @@
+<h2>Ajouter un contact</h2>
+
+<form [formGroup]="contactForm" (ngSubmit)="onSubmit()">
+  <div>
+    <input formControlName="nom" placeholder="Nom" />
+  </div>
+
+  <div>
+    <input formControlName="prenom" placeholder="Prénom" />
+  </div>
+
+  <div>
+    <input formControlName="email" placeholder="Email" />
+  </div>
+
+  <div>
+    <input formControlName="telephone" placeholder="Téléphone" />
+  </div>
+
+  <button type="submit" [disabled]="contactForm.invalid">Ajouter</button>
+</form>

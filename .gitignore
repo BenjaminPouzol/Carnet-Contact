@@ -1,0 +1,13 @@
+# Angular
+carnet-contact_frontend/node_modules/
+carnet-contact_frontend/.angular/
+carnet-contact_frontend/dist/
+
+# Spring Boot
+carnet-contact-backend/target/
+carnet-contact-backend/.mvn/wrapper/maven-wrapper.jar
+
+# IDE / OS
+.vscode/
+.DS_Store
+Thumbs.db
