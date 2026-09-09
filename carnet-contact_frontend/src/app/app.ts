@@ -17,9 +17,8 @@ export class App {
   private contactService = inject(ContactService);
 
   ajouterContact(contact: Contact): void {
-    this.contactService.addContact(contact).subscribe(() => {
-      window.location.reload();
-    });
+    // Plus de .subscribe(), plus de window.location.reload() :
+    // le service met à jour le signal partagé, ContactList suit toute seule.
+    this.contactService.addContact(contact);
   }
 }
-

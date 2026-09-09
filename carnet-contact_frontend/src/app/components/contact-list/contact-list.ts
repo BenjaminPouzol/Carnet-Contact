@@ -1,5 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
-import { Contact } from '../../contact.model';
+import { Component, OnInit, inject } from '@angular/core';
 import { ContactService } from '../../services/contact';
 
 @Component({
@@ -10,21 +9,15 @@ import { ContactService } from '../../services/contact';
 })
 export class ContactList implements OnInit {
   private contactService = inject(ContactService);
-  contacts = signal<Contact[]>([]);
+
+  // Référence vers le signal du service, pas une copie.
+  contacts = this.contactService.contacts;
 
   ngOnInit(): void {
-    this.chargerContacts();
-  }
-
-  chargerContacts(): void {
-    this.contactService.getContacts().subscribe(data => {
-      this.contacts.set(data);
-    });
+    this.contactService.chargerContacts();
   }
 
   supprimer(id: number): void {
-    this.contactService.deleteContact(id).subscribe(() => {
-      this.chargerContacts();
-    });
+    this.contactService.deleteContact(id);
   }
 }
