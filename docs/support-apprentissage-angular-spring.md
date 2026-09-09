@@ -1,0 +1,929 @@
+# Support d'apprentissage — Angular + Spring Boot
+
+Document de référence détaillé, organisé par notion. Chaque section combine un paragraphe explicatif (le "pourquoi", le contexte, la logique derrière la notion) et la syntaxe précise à retenir (le "comment", réutilisable telle quelle dans un futur projet). Pense à t'y référer quand un concept redevient flou, et à le compléter toi-même au fil de tes futures découvertes.
+
+---
+
+## Sommaire
+
+1. [Outils en ligne de commande](#1-outils-en-ligne-de-commande)
+2. [Composants Angular](#2-composants-angular)
+3. [Signals](#3-signals)
+4. [Services et injection de dépendances](#4-services-et-injection-de-dépendances)
+5. [Syntaxe de template (`@if` / `@for`)](#5-syntaxe-de-template-if--for)
+6. [Bindings](#6-bindings)
+7. [Formulaires réactifs](#7-formulaires-réactifs)
+8. [Communication entre composants](#8-communication-entre-composants)
+9. [HTML sémantique](#9-html-sémantique)
+10. [HttpClient et Observables](#10-httpclient-et-observables)
+11. [Cycle de vie d'un composant](#11-cycle-de-vie-dun-composant)
+12. [Signal partagé alimenté par HttpClient](#12-signal-partagé-alimenté-par-httpclient)
+13. [Backend Spring Boot](#13-backend-spring-boot)
+14. [Git et GitHub](#14-git-et-github)
+15. [Pense-bête de dépannage](#15-pense-bête-de-dépannage)
+
+---
+
+## 1. Outils en ligne de commande
+
+Angular et Spring Boot fournissent chacun un outil en ligne de commande dont le rôle est d'éviter d'écrire à la main toute la "plomberie" répétitive d'un projet : structure de dossiers, fichiers de configuration, squelette de code respectant les conventions du framework. Sans ces outils, créer un composant Angular obligerait à écrire soi-même le décorateur `@Component`, les trois fichiers liés, et à les relier correctement — l'outil fait tout ça en une commande. C'est un gain de temps, mais surtout une garantie de cohérence : tous les projets Angular généré par `ng` partagent la même structure, ce qui les rend plus faciles à comprendre pour n'importe quel développeur habitué au framework.
+
+### Angular CLI (`ng`)
+
+| Commande | Rôle |
+|---|---|
+| `ng new <nom>` | Crée un nouveau projet Angular complet |
+| `ng serve` | Lance le serveur de développement (`localhost:4200`), avec rechargement automatique |
+| `ng generate component <chemin>` (raccourci `ng g c`) | Génère un composant (fichiers ts/html/css/spec) |
+| `ng generate service <chemin>` (raccourci `ng g s`) | Génère un service |
+| `ng build` | Compile l'application pour la production (fichiers optimisés dans `dist/`) |
+| `ng --help` | Liste toutes les commandes disponibles |
+
+`ng serve` mérite une attention particulière : il ne se contente pas de lancer un serveur, il surveille aussi en permanence les fichiers du projet (le "watch mode"). Dès qu'une sauvegarde est détectée, Angular recompile automatiquement le code concerné et pousse la mise à jour vers le navigateur — c'est ce qui permet de voir le résultat d'une modification quasi instantanément, sans jamais avoir à relancer quoi que ce soit manuellement. C'est un outil de développement uniquement : pour livrer une vraie application, on utilise `ng build`, qui produit des fichiers statiques optimisés, prêts à être déposés sur un serveur web classique.
+
+### Maven Wrapper (`mvnw`) — l'équivalent côté Java
+
+| Commande | Rôle |
+|---|---|
+| `./mvnw spring-boot:run` | Compile et lance le serveur Spring Boot (`localhost:8080`) — forme macOS / Linux / Git Bash |
+| `.\mvnw.cmd spring-boot:run` | La même commande sous Windows PowerShell (antislash, et extension `.cmd`) |
+| `./mvnw clean` | Supprime le dossier `target/`, pour repartir d'une compilation vierge |
+
+Le "wrapper" (`mvnw` au lieu de `mvn`) existe pour une raison précise : il télécharge et utilise automatiquement la bonne version de Maven attendue par le projet, sans que tu aies besoin d'installer Maven toi-même sur ta machine ni de te soucier des versions. C'est un peu l'équivalent de ce que fait `package-lock.json` côté npm — garantir que tout le monde travaille avec les mêmes versions d'outils, projet par projet.
+
+### Lancer les deux serveurs en parallèle
+
+Une application séparée en un frontend et un backend n'est pas un programme unique que l'on démarre d'une seule commande : ce sont **deux serveurs indépendants**, qui tournent chacun dans son propre terminal, écoutent chacun sur son propre port, et communiquent uniquement par des requêtes HTTP. C'est une conséquence directe de l'architecture choisie — le navigateur charge l'interface depuis le serveur de développement du frontend, puis appelle le backend séparément pour obtenir les données.
+
+Concrètement, il faut ouvrir deux terminaux et laisser les deux commandes tourner en permanence pendant toute la session de travail. Un terminal qui semble "bloqué" après avoir lancé un serveur est le comportement normal et attendu : le serveur occupe ce terminal tant qu'il fonctionne, et l'interrompre (`Ctrl + C`) revient à éteindre le serveur.
+
+| Terminal | Dossier | Commande | Port |
+|---|---|---|---|
+| 1 — Backend | `<projet>-backend/` | `.\mvnw.cmd spring-boot:run` | 8080 |
+| 2 — Frontend | `<projet>_frontend/` | `npm start` (alias de `ng serve`) | 4200 |
+
+L'ordre de démarrage a son importance en pratique : mieux vaut lancer le backend en premier, pour qu'il soit prêt à répondre quand le frontend enverra ses premières requêtes. Si le frontend démarre seul, la page s'affichera correctement mais toutes les données resteront vides, avec une erreur réseau visible dans la console du navigateur (`F12`).
+
+Une différence de comportement distingue les deux serveurs au quotidien. Le serveur Angular surveille les fichiers et recompile automatiquement à chaque sauvegarde (le "watch mode") : une modification TypeScript ou HTML apparaît seule dans le navigateur en une ou deux secondes. Le serveur Spring Boot, lui, ne surveille rien par défaut : toute modification d'un fichier Java exige de l'arrêter (`Ctrl + C`) puis de le relancer pour être prise en compte.
+
+| Vérification | Ce qu'on doit obtenir |
+|---|---|
+| Backend démarré | `Tomcat started on port 8080` puis `Started ...Application in X seconds` |
+| Backend répond | `http://localhost:8080/api/<ressource>` renvoie du JSON (`[]` si la base est vide) |
+| Frontend démarré | `Local: http://localhost:4200/` puis `Watch mode enabled` |
+
+---
+
+## 2. Composants Angular
+
+Un composant est la brique de base de toute interface Angular. L'idée centrale est de découper l'application en petites unités autonomes et réutilisables, chacune responsable d'une portion précise de l'écran, plutôt que d'écrire une seule énorme page qui gère tout. Une application Angular complète n'est au fond rien d'autre qu'un arbre de composants imbriqués les uns dans les autres — le composant racine (`App`) contient d'autres composants, qui peuvent eux-mêmes en contenir d'autres, et ainsi de suite.
+
+Concrètement, un composant sépare toujours trois responsabilités dans trois fichiers distincts : la logique (que faire quand on clique sur un bouton, comment récupérer des données), l'affichage (à quoi ressemble le composant), et le style (comment il est présenté visuellement, sans affecter les autres composants de la page grâce à l'isolation du CSS).
+
+### Structure
+
+```
+mon-composant.ts     → logique (classe TypeScript)
+mon-composant.html   → template affiché
+mon-composant.css    → style, isolé à ce composant
+```
+
+### Syntaxe de base
+
+```typescript
+import { Component } from '@angular/core';
+
+@Component({
+  selector: 'app-mon-composant',
+  imports: [],
+  templateUrl: './mon-composant.html',
+  styleUrl: './mon-composant.css'
+})
+export class MonComposant {
+  // logique ici
+}
+```
+
+Le `@Component({...})` est ce qu'on appelle un **décorateur** : une annotation placée juste avant une classe, qui donne des informations supplémentaires au framework sur la façon de traiter cette classe. Sans lui, `MonComposant` ne serait qu'une classe TypeScript ordinaire — c'est ce décorateur qui la transforme en composant Angular reconnu comme tel.
+
+Le `selector` définit le nom de la balise HTML personnalisée que ce composant crée. Une fois déclaré, on peut l'utiliser n'importe où dans un autre template, exactement comme une balise HTML native (`<div>`, `<p>`...), mais celle-ci affichera tout ce que le composant définit.
+
+Le tableau `imports` mérite d'être bien compris : chaque composant Angular moderne (dit "standalone") déclare explicitement, dans ce tableau, tous les autres composants ou modules dont **son propre template** a besoin. C'est différent de l'ancienne approche Angular, où tout était déclaré une fois pour toutes dans un fichier central appelé `NgModule`. L'approche standalone rend chaque composant plus autonome et plus facile à comprendre isolément : en lisant ses `imports`, on sait immédiatement de quoi il dépend, sans devoir remonter dans une configuration globale.
+
+### Générer un composant
+
+```bash
+ng generate component components/mon-composant
+```
+
+### Utiliser un composant dans un autre
+
+1. L'importer : `import { MonComposant } from './components/mon-composant/mon-composant';`
+2. L'ajouter aux `imports: [...]` du composant parent
+3. L'utiliser dans le template parent : `<app-mon-composant></app-mon-composant>`
+
+Ces trois étapes sont indissociables. Oublier l'une d'elles est une source d'erreur très fréquente en début d'apprentissage : si tu utilises la balise dans le HTML sans avoir ajouté le composant aux `imports`, Angular affichera une erreur au moment de la compilation, car il ne "connaît" pas cette balise.
+
+---
+
+## 3. Signals
+
+### Le concept
+
+Les signals répondent à un problème très concret : comment faire en sorte que l'affichage d'une page se mette à jour automatiquement dès qu'une donnée change, sans avoir à écrire soi-même du code pour détecter ce changement et rafraîchir manuellement le DOM ? Un signal est une "boîte" qui contient une valeur, et qui a la particularité de prévenir Angular chaque fois que cette valeur est modifiée. Angular peut alors recalculer uniquement les parties de l'affichage qui dépendent de cette valeur précise, de façon très ciblée et performante — sans avoir besoin de rafraîchir toute la page.
+
+C'est un changement de paradigme important par rapport à la programmation "classique" où l'on manipule des variables normales : avec une variable ordinaire, modifier sa valeur ne déclenche rien d'automatique côté affichage. Avec un signal, la mise à jour de l'interface devient une conséquence directe et automatique de la mise à jour de la donnée.
+
+### Syntaxe
+
+```typescript
+import { signal } from '@angular/core';
+
+// Créer un signal
+const monSignal = signal<Type>(valeurInitiale);
+const compteur = signal(0);
+const contacts = signal<Contact[]>([]);
+
+// Lire la valeur — TOUJOURS avec des parenthèses, comme un appel de fonction
+console.log(compteur());  // 0
+
+// Modifier avec .set() — remplace complètement la valeur
+compteur.set(5);
+
+// Modifier avec .update() — reçoit l'ancienne valeur, retourne la nouvelle
+compteur.update(ancienneValeur => ancienneValeur + 1);
+
+// Exposer en lecture seule (empêche la modification depuis l'extérieur)
+readonly monSignalPublic = monSignal.asReadonly();
+```
+
+La distinction entre `.set()` et `.update()` correspond à deux besoins différents. `.set()` s'utilise quand on connaît déjà la nouvelle valeur complète et qu'on veut simplement l'imposer (par exemple, remplacer toute une liste par les résultats reçus d'un serveur). `.update()` s'utilise quand la nouvelle valeur dépend de l'ancienne — typiquement pour ajouter un élément à un tableau existant, ou incrémenter un compteur : on ne peut pas "deviner" la nouvelle valeur sans regarder l'ancienne d'abord.
+
+`.asReadonly()` répond à une préoccupation d'encapsulation : un service qui expose directement son signal modifiable permettrait à n'importe quel composant de le modifier n'importe comment, sans passer par une méthode contrôlée. En exposant une version en lecture seule, on force tous les composants extérieurs à passer par les méthodes définies explicitement par le service (comme `addContact()` ou `deleteContact()`), qui elles seules ont le droit de modifier la donnée réelle. Cela centralise la logique de modification à un seul endroit, plus facile à comprendre et à déboguer.
+
+### Dans un template HTML
+
+```html
+<p>{{ compteur() }}</p>
+<!-- toujours avec les parenthèses ! -->
+```
+
+Un piège fréquent en début d'apprentissage : oublier les parenthèses en lisant un signal. Écrire `{{ compteur }}` sans parenthèses n'affichera pas la valeur, mais une représentation de la fonction elle-même — un signal doit systématiquement être "appelé" comme une fonction pour en extraire la valeur actuelle, aussi bien dans le TypeScript que dans le HTML.
+
+### Immutabilité — règle importante
+
+```typescript
+// ✅ Correct — crée un nouveau tableau
+listeSignal.update(liste => [...liste, nouvelElement]);
+listeSignal.update(liste => liste.filter(item => item.id !== idASupprimer));
+
+// ❌ Incorrect — mutation directe, Angular peut ne pas détecter le changement
+listeSignal().push(nouvelElement);
+```
+
+Cette règle de l'immutabilité (ne jamais modifier un tableau ou un objet "en place", mais toujours en recréer une nouvelle version) découle directement de la façon dont Angular détecte les changements : il compare les **références** des objets, pas leur contenu en détail. Si l'on modifie un tableau directement avec `.push()`, la référence du tableau reste exactement la même en mémoire — Angular, en comparant l'ancienne et la nouvelle référence, ne verra aucune différence et risque de ne pas déclencher la mise à jour de l'affichage, même si le contenu a réellement changé. En utilisant le spread operator (`...`) pour créer un tout nouveau tableau à chaque modification, on garantit que la référence change également, ce qui permet à Angular de détecter fiablement le changement.
+
+---
+
+## 4. Services et injection de dépendances
+
+### Le concept
+
+Un service répond à une question de conception logicielle : où doit vivre la logique et les données qui ne concernent pas directement l'affichage, mais qui doivent être partagées entre plusieurs composants ? Si l'on écrivait toute cette logique directement dans un composant, on se retrouverait rapidement avec du code dupliqué dès qu'un deuxième composant aurait besoin des mêmes données, et il deviendrait très difficile de garder plusieurs affichages synchronisés entre eux.
+
+Un service résout ce problème en centralisant cette responsabilité dans une classe à part, dédiée uniquement à la donnée et à la logique métier (pas à l'affichage). N'importe quel composant peut ensuite "demander" ce service et l'utiliser. C'est le principe de séparation des responsabilités : les composants s'occupent de l'affichage, les services s'occupent de la donnée et de la logique.
+
+### Créer un service
+
+```bash
+ng generate service services/mon-service
+```
+
+### Syntaxe
+
+```typescript
+import { Injectable } from '@angular/core';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class MonService {
+  // logique ici
+}
+```
+
+Le `providedIn: 'root'` est une précision cruciale : il indique à Angular de ne créer **qu'une seule instance** de ce service pour toute l'application (ce qu'on appelle un singleton), plutôt qu'une nouvelle instance à chaque fois qu'un composant en a besoin. C'est cette unicité qui permet le partage réel de données : si deux composants différents injectent le même service, ils reçoivent tous les deux une référence vers exactement la même instance, avec les mêmes données internes. Si l'un des deux modifie une donnée via une méthode du service, l'autre composant "voit" immédiatement ce changement, puisqu'ils travaillent en réalité sur le même objet en mémoire.
+
+### Utiliser un service dans un composant (injection)
+
+```typescript
+import { inject } from '@angular/core';
+import { MonService } from '../../services/mon-service';
+
+export class MonComposant {
+  private monService = inject(MonService);
+}
+```
+
+L'injection de dépendances est un mécanisme qui inverse la responsabilité de création des objets : plutôt que d'écrire soi-même `new MonService()` (ce qui créerait une nouvelle instance, allant à l'encontre du principe de singleton), on demande à Angular de nous **fournir** l'instance déjà existante. `inject()` est la syntaxe moderne pour formuler cette demande — elle remplace l'ancienne approche qui consistait à recevoir le service en paramètre du constructeur de la classe.
+
+---
+
+## 5. Syntaxe de template (`@if` / `@for`)
+
+Les templates Angular ont besoin d'une syntaxe spécifique pour exprimer de la logique conditionnelle ou des boucles directement dans le HTML, puisque le HTML natif ne sait pas faire ça. Les versions récentes d'Angular (17 et suivantes) ont introduit une nouvelle syntaxe de contrôle de flux, `@if` et `@for`, qui remplace l'ancienne écriture basée sur des directives (`*ngIf`, `*ngFor`). Cette nouvelle syntaxe est volontairement plus proche de ce qu'on écrirait en JavaScript classique, ce qui la rend plus intuitive à lire et à retenir.
+
+### `@if` / `@else`
+
+```html
+@if (condition) {
+  <p>Vrai</p>
+} @else {
+  <p>Faux</p>
+}
+```
+
+### `@for`
+
+```html
+@for (item of liste(); track item.id) {
+  <li>{{ item.nom }}</li>
+}
+```
+
+Le mot-clé `track` est obligatoire avec `@for`, et il mérite une explication : quand une liste change (un élément ajouté, supprimé, ou réordonné), Angular a besoin d'un moyen fiable d'identifier quel élément du DOM correspond à quel élément de la liste, pour éviter de tout recréer inutilement à chaque changement. En donnant un identifiant unique et stable (typiquement l'`id` de chaque élément), Angular peut, par exemple, comprendre qu'un seul élément a été supprimé au milieu de la liste, et retirer uniquement le `<li>` correspondant, sans toucher aux autres — une optimisation de performance importante sur de longues listes.
+
+### `@for` avec bloc vide
+
+```html
+@for (item of liste(); track item.id) {
+  <li>{{ item.nom }}</li>
+} @empty {
+  <p>Liste vide</p>
+}
+```
+
+---
+
+## 6. Bindings
+
+Le terme "binding" (liaison) désigne la façon dont le HTML d'un template se connecte à la logique TypeScript du composant. Angular propose trois syntaxes différentes, chacune correspondant à un sens de circulation de l'information bien précis, et il est important de bien les distinguer visuellement grâce à leur ponctuation caractéristique.
+
+### Interpolation `{{ }}`
+
+Affiche une valeur TypeScript dans le texte du HTML. La donnée circule dans un seul sens : du composant vers l'affichage.
+```html
+<h1>{{ title() }}</h1>
+<p>{{ contact.nom }}</p>
+```
+
+### Binding de propriété `[ ]`
+
+Lie un attribut ou une propriété HTML à une valeur TypeScript. Comme l'interpolation, la donnée circule du composant vers le HTML, mais cette fois-ci elle contrôle un attribut plutôt qu'un texte affiché.
+```html
+<button [disabled]="formulaire.invalid">Envoyer</button>
+<form [formGroup]="monFormulaire">
+```
+
+### Binding d'événement `( )`
+
+Exécute une méthode du composant en réaction à un événement du DOM (un clic, une soumission de formulaire...). Ici, la circulation s'inverse : c'est une action de l'utilisateur dans le navigateur qui déclenche l'exécution de code côté TypeScript.
+```html
+<button (click)="maMethode()">Cliquer</button>
+<button (click)="supprimer(contact.id)">Supprimer</button>
+<form (ngSubmit)="onSubmit()">
+```
+
+Retenir la logique visuelle aide à se souvenir de laquelle utiliser : les crochets `[ ]` "font entrer" une donnée dans l'élément HTML (comme une fenêtre par laquelle on regarde vers l'intérieur), tandis que les parenthèses `( )` "font sortir" une action vers le TypeScript (comme un signal qui part de l'élément).
+
+---
+
+## 7. Formulaires réactifs
+
+### Principe
+
+Angular propose deux façons de gérer les formulaires : l'approche "template-driven" (où la logique de validation est écrite directement dans le HTML) et l'approche "réactive" (où toute la structure du formulaire — les champs, leurs valeurs initiales, leurs règles de validation — est définie dans la classe TypeScript, le HTML se contentant de s'y "brancher"). L'approche réactive est généralement préférée dès que le formulaire devient un peu complexe, car elle centralise toute la logique à un seul endroit, testable et prévisible, plutôt que de l'éparpiller dans le template.
+
+### Syntaxe TypeScript
+
+```typescript
+import { inject } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+
+@Component({
+  selector: 'app-mon-formulaire',
+  imports: [ReactiveFormsModule],
+  templateUrl: './mon-formulaire.html',
+  styleUrl: './mon-formulaire.css'
+})
+export class MonFormulaire {
+  private fb = inject(FormBuilder);
+
+  monFormulaire = this.fb.group({
+    nom: ['', Validators.required],
+    email: ['', [Validators.required, Validators.email]],
+    telephone: ['']  // optionnel, pas de Validators
+  });
+
+  onSubmit(): void {
+    if (this.monFormulaire.valid) {
+      console.log(this.monFormulaire.value);
+      this.monFormulaire.reset();
+    }
+  }
+}
+```
+
+`FormBuilder` est un service fourni par Angular qui simplifie l'écriture d'un formulaire réactif — on pourrait construire la même structure sans lui, mais avec une syntaxe plus verbeuse. Chaque champ déclaré dans `.group({...})` prend la forme d'un tableau : sa valeur de départ, suivie de ses règles de validation (une seule règle directement, ou plusieurs regroupées dans un tableau). L'absence de règle, comme pour `telephone`, signifie simplement que ce champ est optionnel.
+
+La propriété `monFormulaire.valid` (et son inverse `.invalid`) est recalculée automatiquement par Angular à chaque changement de valeur dans les champs, en fonction des règles de validation déclarées. On n'a jamais besoin de la calculer soi-même : elle vaut `true` uniquement si absolument tous les champs respectent leurs règles respectives.
+
+### Validateurs courants
+
+| Validateur | Rôle |
+|---|---|
+| `Validators.required` | Champ obligatoire |
+| `Validators.email` | Format email valide |
+| `Validators.minLength(n)` | Longueur minimale |
+| `Validators.maxLength(n)` | Longueur maximale |
+| `Validators.pattern(regex)` | Doit respecter une expression régulière |
+
+### Syntaxe HTML
+
+```html
+<form [formGroup]="monFormulaire" (ngSubmit)="onSubmit()">
+  <input formControlName="nom" placeholder="Nom" />
+  <input formControlName="email" placeholder="Email" />
+  <button type="submit" [disabled]="monFormulaire.invalid">Envoyer</button>
+</form>
+```
+
+Chacune de ces quatre lignes illustre bien la combinaison des bindings vus plus haut : `[formGroup]` est un binding de propriété qui relie tout le `<form>` à l'objet `FormGroup` du TypeScript ; `formControlName` fait le lien fin entre un `<input>` précis et le champ correspondant à l'intérieur de ce groupe ; `(ngSubmit)` est un binding d'événement qui capture la soumission du formulaire (que ce soit par clic sur le bouton ou par la touche Entrée) ; et `[disabled]` est encore un binding de propriété qui désactive dynamiquement le bouton tant que le formulaire entier n'est pas valide.
+
+---
+
+## 8. Communication entre composants
+
+Un composant enfant, dans l'architecture Angular, n'a normalement aucun moyen direct de "parler" à son parent — l'information ne circule naturellement que du parent vers l'enfant (via des `@Input()`, que tu n'as pas encore vus en détail). Pour permettre l'inverse, c'est-à-dire qu'un enfant signale un événement ou transmette une donnée à son parent, Angular propose un mécanisme d'événements personnalisés.
+
+### Enfant → Parent : `output()`
+
+**Dans le composant enfant** :
+```typescript
+import { output } from '@angular/core';
+
+export class ComposantEnfant {
+  monEvenement = output<TypeDeLaDonnee>();
+
+  declencherEvenement(): void {
+    this.monEvenement.emit(laDonnee);
+  }
+}
+```
+
+**Dans le composant parent (HTML)** :
+```html
+<app-composant-enfant (monEvenement)="maMethode($event)"></app-composant-enfant>
+```
+
+Ce mécanisme fonctionne en deux temps distincts. D'abord, l'enfant déclare, avec `output<Type>()`, qu'il est capable d'émettre un événement personnalisé nommé comme la propriété (`monEvenement` ici), transportant une donnée d'un type précis. Ensuite, quelque part dans sa logique interne (typiquement en réaction à une action utilisateur), il appelle `.emit(laDonnee)` pour effectivement déclencher cet événement avec une valeur donnée. Côté parent, on écoute cet événement exactement comme on écouterait un événement natif du DOM (`(click)`, `(ngSubmit)`...), sauf qu'ici le nom entre parenthèses correspond au nom choisi pour l'`output`. La variable spéciale `$event` récupère automatiquement la donnée qui a été passée à `.emit(...)`.
+
+---
+
+## 9. HTML sémantique
+
+Le HTML sémantique consiste à choisir ses balises en fonction du **rôle** du contenu qu'elles contiennent, et non uniquement en fonction de leur apparence visuelle par défaut. Cette distinction compte pour plusieurs raisons concrètes : l'accessibilité (les lecteurs d'écran utilisés par les personnes malvoyantes s'appuient sur cette structure pour naviguer efficacement dans une page), le référencement (les moteurs de recherche utilisent la hiérarchie des titres pour comprendre l'organisation du contenu), et la maintenabilité (un autre développeur, ou toi-même dans plusieurs mois, comprend immédiatement la structure logique d'une page en lisant simplement son HTML, sans avoir besoin du rendu visuel).
+
+| Balise | Rôle |
+|---|---|
+| `<h1>` à `<h6>` | Titres hiérarchisés (h1 = le plus important). Structure la page, indépendamment de l'apparence visuelle par défaut du navigateur |
+| `<p>` | Paragraphe de texte simple, sans rôle de titre |
+| `<ul>` | Liste à puces (*unordered list*), pour des éléments sans ordre particulier |
+| `<ol>` | Liste numérotée (*ordered list*), pour des éléments dont l'ordre a un sens |
+| `<li>` | Élément de liste (*list item*), doit obligatoirement être placé à l'intérieur d'un `<ul>` ou d'un `<ol>` |
+
+---
+
+## 10. HttpClient et Observables
+
+### Activer HttpClient
+
+```typescript
+import { provideHttpClient } from '@angular/common/http';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    // ...autres providers
+    provideHttpClient()
+  ]
+};
+```
+
+Ce `provideHttpClient()` doit être ajouté une seule fois, dans la configuration globale de l'application (`app.config.ts`). C'est ce qu'on appelle un "provider" : une fonction qui active une fonctionnalité pour toute l'application. Sans cette ligne, tenter d'injecter `HttpClient` dans un service provoquerait une erreur au démarrage, puisque cette fonctionnalité ne serait tout simplement pas configurée.
+
+### Le concept d'Observable
+
+La notion d'Observable répond à un problème temporel : comment représenter une donnée qui n'existe pas encore au moment où on écrit le code, mais qui arrivera plus tard, après un appel réseau dont on ne connaît pas la durée à l'avance ? Un signal, tel qu'on l'a vu, contient toujours une valeur immédiatement disponible. Un Observable, à l'inverse, représente un flux potentiel de valeurs futures — dans le cas d'une requête HTTP classique, ce flux ne contiendra qu'une seule valeur (la réponse du serveur), mais le mécanisme des Observables est en réalité plus général et peut gérer des flux de plusieurs valeurs successives dans le temps (utile par exemple pour des mises à jour en temps réel).
+
+Un point de fonctionnement souvent déroutant au premier abord : appeler `this.http.get(...)` ne déclenche **pas** immédiatement la requête réseau. Cette méthode retourne un Observable qui décrit la requête à effectuer, mais rien ne part réellement tant que personne ne s'y "abonne". Ce comportement est qualifié de "lazy" (paresseux). C'est l'appel à `.subscribe(...)` qui déclenche véritablement l'envoi de la requête.
+
+| | Signal | Observable |
+|---|---|---|
+| Contient | Une valeur **présente** | Une valeur **future** (potentiellement plusieurs dans le temps) |
+| Se lit | `monSignal()` | `.subscribe(callback)` |
+| Déclenchement | Immédiat | "Lazy" — rien ne se passe tant que personne ne s'abonne |
+
+### Syntaxe du service avec HttpClient
+
+```typescript
+import { inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+@Injectable({ providedIn: 'root' })
+export class MonService {
+  private http = inject(HttpClient);
+  private apiUrl = 'http://localhost:8080/api/ressource';
+
+  getTout(): Observable<Type[]> {
+    return this.http.get<Type[]>(this.apiUrl);
+  }
+
+  creer(item: Type): Observable<Type> {
+    return this.http.post<Type>(this.apiUrl, item);
+  }
+
+  supprimer(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/${id}`);
+  }
+
+  modifier(id: number, item: Type): Observable<Type> {
+    return this.http.put<Type>(`${this.apiUrl}/${id}`, item);
+  }
+}
+```
+
+Ce service illustre un pattern important : il ne stocke plus lui-même aucune donnée, contrairement au service à base de signals vu plus tôt. Son unique rôle est désormais de construire et retourner des Observables représentant chaque type de requête possible vers le backend. C'est un changement de responsabilité : la véritable source de vérité des données devient le serveur (et sa base de données), le service Angular n'étant plus qu'un intermédiaire chargé de formuler les bonnes requêtes.
+
+### S'abonner à un Observable (dans un composant)
+
+```typescript
+this.monService.getTout().subscribe(data => {
+  this.monSignalLocal.set(data);
+});
+
+this.monService.supprimer(id).subscribe(() => {
+  // exécuté une fois la suppression confirmée par le serveur
+  this.rechargerListe();
+});
+```
+
+Ce qui se passe concrètement, dans l'ordre chronologique : l'appel à `this.monService.getTout()` ne fait que préparer et retourner un Observable, sans effet immédiat. L'appel enchaîné à `.subscribe(callback)` déclenche alors réellement l'envoi de la requête HTTP vers le serveur. Le navigateur attend ensuite la réponse — pendant ce temps, le reste du code du composant continue de s'exécuter normalement, sans être bloqué. Ce n'est que lorsque la réponse arrive effectivement que la fonction `callback` passée à `.subscribe()` est exécutée, avec la donnée reçue en paramètre. C'est à ce moment précis, souvent bien plus tard dans le temps par rapport aux lignes de code qui l'entourent, qu'on peut par exemple mettre à jour un signal local avec cette donnée.
+
+---
+
+## 11. Cycle de vie d'un composant
+
+### `ngOnInit()`
+
+```typescript
+import { Component, OnInit } from '@angular/core';
+
+export class MonComposant implements OnInit {
+  ngOnInit(): void {
+    // exécuté UNE SEULE FOIS, juste après la création du composant
+    // endroit conventionnel pour déclencher un premier chargement de données
+  }
+}
+```
+
+Angular appelle automatiquement, à des moments précis et prévisibles de l'existence d'un composant, un certain nombre de méthodes spéciales appelées "hooks de cycle de vie" — `ngOnInit()` en est la plus utilisée. Elle est déclenchée une seule fois, juste après qu'Angular ait fini de créer le composant et d'initialiser ses propriétés de base, mais avant que l'utilisateur ne voie quoi que ce soit à l'écran.
+
+La question qui revient souvent est : pourquoi ne pas simplement mettre cette logique directement dans le constructeur de la classe ? La convention Angular réserve le constructeur à une initialisation très basique (typiquement, recevoir des dépendances injectées), et déconseille d'y placer une logique plus complexe comme un appel réseau. `ngOnInit()` garantit que le composant est déjà pleinement construit et prêt, ce qui le rend plus fiable comme point de départ pour charger des données ou effectuer d'autres opérations d'initialisation qui dépendent de l'état complet du composant.
+
+---
+
+## 12. Signal partagé alimenté par HttpClient
+
+### Le problème : plusieurs copies d'une même vérité
+
+Dès qu'une application dépasse un seul composant, une question se pose : où ranger les données reçues du serveur ? La solution la plus immédiate consiste à donner à chaque composant son propre signal local, qu'il remplit lui-même en s'abonnant au service. Cela fonctionne parfaitement tant qu'un seul composant affiche la donnée — mais le jour où un deuxième composant la modifie, le défaut de conception apparaît : chaque composant détient sa propre copie de la liste, et rien ne prévient les autres qu'une copie vient de changer.
+
+Le symptôme typique est un affichage devenu périmé : la donnée est bien enregistrée côté serveur, mais l'écran continue d'afficher l'état d'avant. Le réflexe de contournement — recharger toute la page avec `window.location.reload()` — fonctionne, mais il détruit et reconstruit l'application entière pour resynchroniser une simple liste, ce qui annule l'intérêt même d'une application monopage.
+
+Le pattern du signal partagé résout ce problème en déplaçant la donnée du composant vers le service. Comme un service `providedIn: 'root'` est un singleton, tous les composants qui l'injectent reçoivent la même instance, donc le même signal : ils regardent littéralement la même boîte en mémoire. Un composant écrit, les autres voient le changement immédiatement, sans qu'aucun code de synchronisation n'ait besoin d'être écrit.
+
+### La répartition des rôles entre Observable et signal
+
+Ce pattern ne remplace pas les Observables par des signals : il donne à chacun le rôle pour lequel il est fait, au lieu de les mettre en concurrence.
+
+| Outil | Rôle dans ce pattern |
+|---|---|
+| **Observable** | Le *transport* — il représente la réponse future du serveur, le temps que la requête réseau aboutisse |
+| **Signal** | Le *stockage* — il contient la valeur présente, celle que les composants affichent à l'instant T |
+
+Le service devient le point de conversion de l'un vers l'autre : il reçoit un Observable, en extrait la valeur, et la dépose dans le signal. Les composants, eux, ne manipulent plus que des signals et ne voient plus jamais passer d'Observable.
+
+### Qui s'abonne : le service, pas le composant
+
+C'est le changement de pratique le plus important de ce pattern. L'approche habituelle consiste à appeler `.subscribe()` dans le composant, puis à ranger le résultat dans un signal local. Ici, l'abonnement remonte dans le service.
+
+La raison est directe : si chaque composant s'abonnait de son côté et stockait le résultat chez lui, on recréerait exactement le problème que l'on cherche à supprimer — autant de copies de la vérité que de composants abonnés. Il faut donc **un seul endroit** qui reçoive la réponse du serveur et l'écrive dans la boîte partagée. Ce seul endroit est le service, puisqu'il est aussi le propriétaire du signal.
+
+Une conséquence pratique agréable : les méthodes du service ne retournent plus d'`Observable` mais `void`. L'appelant ne dit plus « donne-moi les données pour que je les range », il dit simplement « mets la liste à jour ».
+
+### Convention de lecture des étapes ci-dessous
+
+Migrer vers ce pattern ne se fait pas d'un bloc : on procède par étapes, et l'application doit rester fonctionnelle à chacune d'elles. Cela suppose de faire cohabiter temporairement l'ancienne et la nouvelle façon de faire. Une partie du code écrit en cours de route n'a donc pas vocation à survivre — c'est de l'échafaudage, utile le temps de la transition, puis retiré.
+
+Les blocs de code qui suivent portent une mention en commentaire pour lever cette ambiguïté :
+
+| Mention | Signification |
+|---|---|
+| `[DÉFINITIF]` | Fait partie du résultat final et restera dans le projet |
+| `[PROVISOIRE]` | Échafaudage : nécessaire pour que l'application fonctionne à cette étape précise, mais destiné à disparaître plus loin |
+
+### Étape 1 — Le service devient propriétaire de la donnée
+
+La première étape ne modifie aucun composant : elle se contente d'ajouter au service la boîte partagée et la méthode qui la remplit. Rien ne change à l'écran, puisque personne ne s'en sert encore. C'est volontaire : on installe la nouvelle plomberie à côté de l'ancienne, sans rien casser.
+
+Le signal est déclaré en deux temps — une version privée et modifiable, une version publique en lecture seule. Ce dédoublement est le mécanisme d'encapsulation permis par `asReadonly()` : les composants pourront lire la liste, mais le compilateur TypeScript leur refusera toute écriture directe, ce qui force le passage par les méthodes du service.
+
+```typescript
+@Injectable({ providedIn: 'root' })
+export class MonService {
+  private http = inject(HttpClient);
+  private apiUrl = 'http://localhost:8080/api/ressource';
+
+  // [DÉFINITIF] La donnée partagée vit ici, dans le service singleton.
+  // Version privée : seul le service peut l'écrire.
+  private itemsSignal = signal<Item[]>([]);
+
+  // [DÉFINITIF] Version exposée aux composants : lisible, non modifiable.
+  readonly items = this.itemsSignal.asReadonly();
+
+  // [DÉFINITIF] Le service s'abonne lui-même et range la réponse.
+  // Retourne void : l'appelant n'a rien à faire du résultat.
+  chargerItems(): void {
+    this.http.get<Item[]>(this.apiUrl).subscribe(data => {
+      this.itemsSignal.set(data);   // .set() car on remplace toute la liste
+    });
+  }
+
+  // [PROVISOIRE] Ancienne méthode retournant l'Observable brut.
+  // Conservée tant que des composants s'y abonnent encore ;
+  // supprimée une fois la migration terminée.
+  getItems(): Observable<Item[]> {
+    return this.http.get<Item[]>(this.apiUrl);
+  }
+}
+```
+
+On utilise `.set()` et non `.update()` parce qu'on remplace intégralement la liste par ce que le serveur vient d'envoyer : il n'est pas nécessaire de consulter l'ancienne valeur pour construire la nouvelle.
+
+### Étape 2 — Le composant lit le signal du service
+
+Le composant abandonne son signal local et pointe vers celui du service. La ligne clé mérite d'être lue attentivement, car elle est souvent mal comprise : elle ne **copie pas** la liste, elle donne un second nom à la même boîte en mémoire. Les deux propriétés — celle du composant et celle du service — désignent le même objet ; quand le service écrit dedans, le composant n'a strictement rien à faire pour en être informé.
+
+```typescript
+export class ItemList implements OnInit {
+  // [DÉFINITIF] L'ORDRE COMPTE : le service doit être injecté avant d'être
+  // utilisé par la propriété suivante (les champs d'une classe sont
+  // initialisés dans leur ordre de déclaration).
+  private monService = inject(MonService);
+
+  // [DÉFINITIF] Référence vers le signal du service, PAS une copie.
+  // Type obtenu : Signal<Item[]>, en lecture seule.
+  items = this.monService.items;
+
+  ngOnInit(): void {
+    // [DÉFINITIF] On demande au service de remplir la boîte partagée.
+    // Plus aucun .subscribe() ici, plus aucun Observable visible.
+    this.monService.chargerItems();
+  }
+
+  supprimer(id: number): void {
+    // [PROVISOIRE] Ancienne façon de faire : on s'abonne dans le composant,
+    // puis on recharge toute la liste depuis le serveur.
+    // Sera remplacé par une mise à jour locale du signal.
+    this.monService.supprimerItem(id).subscribe(() => {
+      this.monService.chargerItems();
+    });
+  }
+}
+```
+
+Deux observations utiles à ce stade. D'abord, le template HTML n'a besoin d'aucune modification : il lisait déjà le signal avec des parenthèses (`items()`), et ce contrat de lecture est inchangé — seul le propriétaire du signal a bougé. Ensuite, l'import de `signal` disparaît du composant, puisqu'il n'en crée plus aucun : le composant redevient un pur consommateur d'affichage.
+
+Un piège concret guette sur l'ordre des déclarations. Écrire la propriété `items` **avant** la ligne `inject()` provoquerait une erreur à l'exécution (`cannot read properties of undefined`), car les champs d'une classe TypeScript sont initialisés dans leur ordre d'écriture : au moment d'évaluer `this.monService.items`, le service ne serait pas encore injecté.
+
+### Étape 3 — L'écriture met à jour le signal partagé
+
+C'est l'étape où le bénéfice devient visible. Jusqu'ici, la donnée avait simplement changé de propriétaire ; maintenant, les opérations d'écriture vont alimenter la boîte partagée, et tous les composants qui la regardent se mettront à jour d'eux-mêmes. Le rechargement complet de la page devient inutile et peut être supprimé.
+
+La méthode d'écriture du service suit la même transformation que la méthode de lecture : elle ne retourne plus d'`Observable`, elle s'abonne elle-même et dépose le résultat dans le signal.
+
+Un point mérite une attention particulière, car il est source d'un bug discret : **il faut ajouter à la liste la réponse du serveur, et non l'objet qu'on lui a envoyé.** Les deux ne sont pas identiques. L'objet construit par le formulaire ne possède pas encore d'identifiant — c'est la base de données qui l'attribue au moment de l'enregistrement (côté JPA, via `@GeneratedValue`). La réponse du serveur, elle, contient l'entité complète, identifiant inclus. Ajouter l'objet envoyé placerait dans la liste un élément dont l'`id` vaut `undefined`, ce qui casserait le `track` de la boucle d'affichage et rendrait inopérant tout bouton agissant sur cet identifiant (suppression, modification, navigation vers une page de détail).
+
+```typescript
+// Dans le service
+
+// [DÉFINITIF] Ne retourne plus d'Observable : le service fait le travail
+// complet — requête, attente de la réponse, mise à jour de l'état.
+ajouterItem(item: Item): void {
+  this.http.post<Item>(this.apiUrl, item).subscribe(itemCree => {
+    // On ajoute la RÉPONSE DU SERVEUR (itemCree), pas l'objet envoyé (item) :
+    // seule la réponse porte l'id généré par la base de données.
+    // .update() car la nouvelle valeur dépend de l'ancienne.
+    // Spread [...] pour créer un nouveau tableau (règle d'immutabilité).
+    this.itemsSignal.update(liste => [...liste, itemCree]);
+  });
+}
+```
+
+Côté composant, la méthode se réduit à une seule ligne. Elle ne s'abonne plus, n'attend plus rien et ne recharge plus la page : elle transmet la demande au service, qui se charge de tout le reste.
+
+```typescript
+// Dans le composant parent
+
+// [DÉFINITIF] Plus de .subscribe(), plus de window.location.reload().
+ajouter(item: Item): void {
+  this.monService.ajouterItem(item);
+}
+```
+
+Le résultat à observer est caractéristique de ce pattern : le composant qui **affiche** la liste n'a pas été modifié du tout, et se met pourtant à jour instantanément après un ajout effectué par un **autre** composant. Aucun code de synchronisation n'a été écrit entre les deux — ils partagent simplement le même signal, et Angular se charge de rafraîchir l'affichage qui en dépend.
+
+Un bon test de vérification consiste à ajouter un élément, puis à agir immédiatement dessus (le supprimer, par exemple) sans recharger la page. Si l'opération fonctionne, c'est la preuve que l'identifiant généré par la base a bien été récupéré depuis la réponse du serveur ; si elle échoue, c'est le signe que l'objet envoyé a été ajouté à la place de la réponse.
+
+### Étape 4 — La suppression met à jour le signal localement
+
+Une opération de suppression écrite naïvement enchaîne deux requêtes : d'abord le `DELETE`, puis un `GET` complet pour récupérer la liste à jour. Le second appel demande pourtant au serveur une information déjà connue du client — la liste précédente, moins l'élément retiré. On peut donc l'économiser en modifiant le signal directement.
+
+```typescript
+// Dans le service
+
+// [DÉFINITIF]
+supprimerItem(id: number): void {
+  this.http.delete<void>(`${this.apiUrl}/${id}`).subscribe(() => {
+    // Mise à jour locale : inutile de redemander la liste au serveur,
+    // on sait déjà à quoi elle doit ressembler.
+    // .filter() renvoie un nouveau tableau (règle d'immutabilité).
+    this.itemsSignal.update(liste => liste.filter(item => item.id !== id));
+  });
+}
+```
+
+```typescript
+// Dans le composant
+
+// [DÉFINITIF] Le composant ne fait plus que transmettre la demande.
+supprimer(id: number): void {
+  this.monService.supprimerItem(id);
+}
+```
+
+La mise à jour locale mérite d'être comprise comme un arbitrage plutôt que comme une règle absolue. Elle repose sur une hypothèse : le serveur a fait exactement ce qui lui était demandé, et personne d'autre n'a modifié les données entre-temps. Sur une application mono-utilisateur, cette hypothèse est sûre, et l'économie d'une requête réseau est un gain net. Sur une application où plusieurs personnes travaillent simultanément sur les mêmes données, la liste locale peut en revanche diverger de celle du serveur — on préfère alors recharger depuis le serveur après chaque écriture, ou mettre en place un mécanisme de synchronisation plus élaboré.
+
+### Le nettoyage final
+
+Une fois toutes les opérations migrées, l'échafaudage doit être retiré. C'est une étape à part entière : du code de transition laissé en place devient du code mort, qui laisse croire à un lecteur futur qu'il existe deux façons valides de faire les choses dans le projet.
+
+| À supprimer | Pourquoi |
+|---|---|
+| Les anciennes méthodes du service retournant un `Observable` | Plus aucun composant ne s'y abonne ; vérifier par une recherche globale sur leur nom avant de les retirer |
+| L'import `Observable` dans le service | Plus aucune signature de méthode ne l'utilise |
+| Les signals locaux déclarés dans les composants | Remplacés par la référence au signal du service |
+| Les appels à `window.location.reload()` | Le signal partagé propage désormais seul les changements |
+
+Un point peut surprendre au moment de supprimer l'import `Observable` : RxJS n'a pas disparu du projet pour autant. Les méthodes `http.get()`, `http.post()` et `http.delete()` retournent toujours des Observables, et le service s'y abonne toujours. Ce qui a changé, c'est que les Observables ne font plus partie du **vocabulaire** de l'application : ils sont devenus un détail d'implémentation interne au service, invisible depuis les composants. C'est précisément le but recherché — chaque outil à sa place, derrière une frontière claire.
+
+### Comment savoir que la migration est terminée
+
+| Signe | Ce qu'il confirme |
+|---|---|
+| Aucun `.subscribe()` dans un composant | Tous les abonnements sont remontés dans le service |
+| Aucune méthode du service ne retourne d'`Observable` | Le service expose un état, plus des requêtes |
+| Aucun `window.location.reload()` | La réactivité repose entièrement sur le signal partagé |
+| Les composants d'affichage n'ont pas été modifiés lors des étapes 3 et 4 | Le partage fonctionne : ils se mettent à jour sans code de synchronisation |
+
+Ce dernier point est le meilleur indicateur de réussite du pattern. Un composant qui affiche une liste ne devrait avoir été touché qu'une seule fois — à l'étape 2, pour pointer vers le signal du service. Toutes les écritures effectuées ensuite par d'autres composants se répercutent sur son affichage sans qu'une seule ligne n'ait été ajoutée chez lui.
+
+### Récapitulatif du statut de chaque élément
+
+| Élément | Statut | Devenir |
+|---|---|---|
+| `private itemsSignal = signal<Item[]>([])` | Définitif | Cœur du pattern — la source de vérité côté client |
+| `readonly items = this.itemsSignal.asReadonly()` | Définitif | Cœur du pattern — la vitrine en lecture seule |
+| `chargerItems(): void` dans le service | Définitif | Remplace le chargement fait par chaque composant |
+| `ajouterItem()` et `supprimerItem()` retournant `void` | Définitif | Écrivent dans le signal partagé au lieu de retourner un Observable |
+| Import `Observable` dans le service | Supprimé | Retiré au nettoyage final : plus aucune signature ne l'utilise |
+| `items = this.monService.items` dans le composant | Définitif | Remplace le signal local du composant |
+| Signal local `items = signal<Item[]>([])` dans le composant | Supprimé | Remplacé dès l'étape 2 par la référence au signal du service |
+| `getItems(): Observable<Item[]>` dans le service | Supprimé | Retiré au nettoyage final, une fois plus aucun composant abonné |
+| `.subscribe()` écrit dans un composant | Supprimé | Retiré à l'étape 4 : plus aucun composant ne s'abonne |
+| `window.location.reload()` après une écriture | Supprimé | Retiré à l'étape 3, dès que le signal partagé propage seul les changements |
+
+---
+
+## 13. Backend Spring Boot
+
+Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
+
+### Entité JPA
+
+```java
+package com.example.monapp.model;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+
+@Entity
+public class MonEntite {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String champ1;
+    private String champ2;
+
+    // Getters et setters (générables via VS Code : clic droit > Source Action > Generate Getters and Setters)
+}
+```
+
+| Annotation | Rôle |
+|---|---|
+| `@Entity` | Cette classe est mappée vers une table en base de données |
+| `@Id` | Désigne la clé primaire |
+| `@GeneratedValue(strategy = GenerationType.IDENTITY)` | L'id est généré automatiquement par la base (auto-incrémenté) |
+
+Une entité est le point de jonction entre le monde orienté objet du code Java et le monde relationnel d'une base de données. Chaque instance de cette classe correspond concrètement à une ligne dans une table, et chaque propriété correspond à une colonne. C'est ce mapping, entièrement piloté par les annotations, qui dispense d'avoir à écrire soi-même des requêtes SQL de création de table ou d'insertion — le framework s'en charge automatiquement à partir de la description de la classe.
+
+### Repository
+
+```java
+package com.example.monapp.repository;
+
+import com.example.monapp.model.MonEntite;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface MonEntiteRepository extends JpaRepository<MonEntite, Long> {
+}
+```
+
+`JpaRepository<MonEntite, Long>` fournit automatiquement, sans écrire de code : `findAll()`, `findById()`, `save()`, `deleteById()`, et bien d'autres méthodes. `Long` désigne le type de la clé primaire.
+
+Le repository est la couche responsable exclusivement de l'accès aux données — lire, écrire, mettre à jour, supprimer. Le fait qu'il s'agisse d'une simple interface, sans aucune implémentation écrite à la main, est la partie la plus surprenante au premier abord : en héritant de `JpaRepository`, la classe hérite automatiquement d'un ensemble déjà tout fait de méthodes CRUD standard, et Spring génère lui-même, au démarrage de l'application, une implémentation concrète capable de dialoguer avec la base de données. On peut aussi y ajouter ses propres méthodes de recherche personnalisées simplement en déclarant leur signature, en suivant une convention de nommage précise (par exemple `findByNom(String nom)`), sans avoir à écrire la logique — Spring l'interprète automatiquement à partir du nom de la méthode.
+
+### Contrôleur REST
+
+```java
+package com.example.monapp.controller;
+
+import com.example.monapp.model.MonEntite;
+import com.example.monapp.repository.MonEntiteRepository;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/ressource")
+@CrossOrigin(origins = "http://localhost:4200")
+public class MonController {
+
+    private final MonEntiteRepository repository;
+
+    public MonController(MonEntiteRepository repository) {
+        this.repository = repository;
+    }
+
+    @GetMapping
+    public List<MonEntite> getAll() {
+        return repository.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public MonEntite getById(@PathVariable Long id) {
+        return repository.findById(id).orElseThrow();
+    }
+
+    @PostMapping
+    public MonEntite create(@RequestBody MonEntite item) {
+        return repository.save(item);
+    }
+
+    @PutMapping("/{id}")
+    public MonEntite update(@PathVariable Long id, @RequestBody MonEntite item) {
+        item.setId(id);
+        return repository.save(item);
+    }
+
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable Long id) {
+        repository.deleteById(id);
+    }
+}
+```
+
+| Annotation | Rôle |
+|---|---|
+| `@RestController` | Classe qui gère des requêtes HTTP, renvoie du JSON |
+| `@RequestMapping("/api/ressource")` | Préfixe commun de toutes les routes de la classe |
+| `@CrossOrigin(origins = "...")` | Autorise les requêtes venant d'une autre origine (ex: Angular sur un autre port) — sans ça : erreur CORS |
+| `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping` | Associent une méthode à un verbe HTTP et une route |
+| `@RequestBody` | Convertit automatiquement le JSON reçu en objet Java |
+| `@PathVariable` | Récupère une valeur dynamique dans l'URL (ex: l'`id` dans `/api/ressource/5`) |
+
+Le contrôleur constitue la porte d'entrée de l'application côté réseau : c'est lui qui expose des URLs accessibles depuis l'extérieur (typiquement depuis ton frontend Angular), reçoit les requêtes HTTP, les traduit en appels vers le repository, et renvoie une réponse formatée en JSON. C'est un peu le miroir exact, côté serveur, de ce que fait un service Angular côté client : là où le service Angular *appelle* une URL, le contrôleur Spring Boot est celui qui *répond* à cette URL.
+
+L'annotation `@CrossOrigin` mérite une attention particulière, car son absence est une source fréquente de confusion pour les débutants : par défaut, les navigateurs bloquent, pour des raisons de sécurité, les requêtes JavaScript émises depuis une origine (ton frontend, par exemple `localhost:4200`) vers une autre origine (ton backend, `localhost:8080`) — ce mécanisme de protection s'appelle CORS. Sans cette annotation, même si le backend fonctionne parfaitement bien tout seul, toute tentative d'appel depuis Angular échouera avec une erreur visible dans la console du navigateur.
+
+### Injection de dépendances côté Java
+
+```java
+private final MonEntiteRepository repository;
+
+public MonController(MonEntiteRepository repository) {
+    this.repository = repository;
+}
+```
+
+Le principe est exactement le même que l'injection de dépendances vue côté Angular avec `inject()` : on ne crée jamais soi-même une instance du repository avec `new MonEntiteRepository()` — on la reçoit, déjà prête à l'emploi, fournie automatiquement par le framework. La différence se situe uniquement dans la syntaxe employée pour formuler cette demande : côté Java/Spring, la façon la plus classique consiste à déclarer la dépendance comme paramètre du constructeur de la classe. Spring détecte alors automatiquement, au démarrage de l'application, que ce contrôleur a besoin d'un `MonEntiteRepository`, et lui en fournit une instance sans intervention supplémentaire de ta part.
+
+---
+
+## 14. Git et GitHub
+
+Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
+
+### Commandes de base
+
+| Commande | Rôle |
+|---|---|
+| `git init` | Transforme un dossier en dépôt Git |
+| `git status` | Affiche l'état actuel (fichiers modifiés, en attente, etc.) |
+| `git add .` | Prépare tous les fichiers modifiés pour le prochain commit |
+| `git commit -m "message"` | Crée un instantané (commit) de l'état actuel, avec un message |
+| `git push` | Envoie les commits locaux vers le dépôt distant (GitHub) |
+| `git pull` | Récupère les derniers commits depuis le dépôt distant |
+
+Le fonctionnement de Git repose sur une séquence en deux temps qu'il est utile de bien intérioriser : d'abord on "prépare" (`add`) les modifications qu'on souhaite inclure dans le prochain instantané, puis on "valide" (`commit`) cet instantané avec un message qui en décrit le contenu. Cette étape intermédiaire de préparation permet, dans des cas plus avancés, de choisir précisément quels fichiers modifiés on veut inclure dans tel ou tel commit, plutôt que de tout regrouper systématiquement.
+
+### Connexion initiale à GitHub (une seule fois par projet)
+
+```bash
+git remote add origin <url-du-dépôt-github>
+git branch -M main
+git push -u origin main
+```
+
+Cette séquence n'est à exécuter qu'une seule fois, lors de la mise en place initiale du lien entre le dépôt local (sur ton ordinateur) et le dépôt distant (sur GitHub). `git remote add origin` enregistre l'adresse du dépôt distant sous un nom court, `origin`, qu'on pourra réutiliser ensuite sans avoir à retaper l'URL complète. `git branch -M main` renomme la branche principale en `main` (la convention actuelle sur GitHub). `git push -u origin main` envoie les commits pour la première fois, et l'option `-u` crée un lien permanent entre la branche locale et sa contrepartie distante — c'est grâce à ce lien qu'un simple `git push`, sans argument supplémentaire, suffira pour toutes les fois suivantes.
+
+### `.gitignore`
+
+```
+# Angular
+mon-projet-angular/node_modules/
+mon-projet-angular/.angular/
+mon-projet-angular/dist/
+
+# Spring Boot
+mon-projet-backend/target/
+
+# IDE / OS
+.vscode/
+.DS_Store
+```
+
+Ce fichier a pour rôle d'indiquer à Git une liste de fichiers ou de dossiers à ne jamais suivre, quelle que soit la commande utilisée. La raison principale est pratique : certains dossiers, comme `node_modules` ou `target`, sont entièrement régénérables à partir d'autres fichiers du projet (`package.json` pour npm, `pom.xml` pour Maven) et peuvent peser plusieurs centaines de mégaoctets — les inclure dans l'historique Git alourdirait considérablement le dépôt sans réel bénéfice, puisque n'importe qui peut les régénérer en une commande (`npm install`, `./mvnw compile`).
+
+### Workflow habituel de travail
+
+```bash
+git add .
+git commit -m "Description claire de ce qui a été fait"
+git push
+```
+
+Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou correction significative permet de garder un historique lisible du projet, avec des points de restauration réguliers auxquels revenir en cas de problème, et une trace claire de la progression au fil du temps.
+
+---
+
+## 15. Pense-bête de dépannage
+
+| Symptôme | Cause probable | Solution |
+|---|---|---|
+| Page blanche ou comportement incohérent au rafraîchissement, sans erreur dans la console | Cache `.angular` corrompu | Arrêter `ng serve`, puis `Remove-Item -Recurse -Force .angular`, puis relancer `ng serve` |
+| `warning: adding embedded git repository` | Un `.git` existe déjà dans un sous-dossier (généré par `ng new`) | Supprimer ce `.git` imbriqué, puis `git rm --cached -rf <dossier>`, puis refaire `git add .` |
+| Erreur CORS dans la console du navigateur lors d'un appel HTTP vers le backend | `@CrossOrigin` manquant ou mal configuré côté Spring Boot | Vérifier `@CrossOrigin(origins = "http://localhost:4200")` sur le contrôleur |
+| Les données ajoutées disparaissent après un redémarrage du backend | Base H2 configurée en mémoire (comportement normal avec la config par défaut) | Attendu pour l'instant ; pour la persistance réelle, configurer H2 en mode fichier ou changer de base de données |
+| Erreur TypeScript qui persiste alors que le code semble correct | Service de langage TypeScript désynchronisé | Palette de commandes → `TypeScript: Restart TS Server` |
+| `./mvnw : Le terme n'est pas reconnu...` sous PowerShell | Forme Unix de la commande, inadaptée à PowerShell | Utiliser `.\mvnw.cmd spring-boot:run` (antislash + extension `.cmd`) |
+| `Web server failed to start. Port 8080 was already in use.` | Un backend tourne déjà dans un autre terminal | Retrouver le terminal et faire `Ctrl + C` ; sinon `netstat -ano \| findstr :8080` puis `taskkill /PID <pid> /F` |
+| `Port 4200 is already in use` au lancement de `ng serve` | Un `ng serve` déjà actif ailleurs | Fermer l'autre terminal, ou lancer sur un autre port : `ng serve --port 4201` |
+| Page affichée mais toutes les listes vides, erreur réseau dans la console (`F12`) | Le backend n'est pas démarré, ou pas encore prêt | Vérifier le terminal du backend (`Started ...Application`) et tester l'URL de l'API directement dans le navigateur |
+| `cannot read properties of undefined` au démarrage d'un composant qui référence un signal de service | Une propriété utilise `this.monService` alors que la ligne `inject()` est déclarée en dessous | Remonter la ligne `inject()` au-dessus : les champs d'une classe sont initialisés dans leur ordre de déclaration |
+| Une liste ne se met pas à jour après un ajout ou une suppression faits par un autre composant | Chaque composant possède sa propre copie de la donnée dans un signal local | Déplacer la donnée dans le service (signal partagé, voir section 12) plutôt que de recharger la page |
