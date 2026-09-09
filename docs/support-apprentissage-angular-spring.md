@@ -841,6 +841,21 @@ Le contrôleur constitue la porte d'entrée de l'application côté réseau : c'
 
 L'annotation `@CrossOrigin` mérite une attention particulière, car son absence est une source fréquente de confusion pour les débutants : par défaut, les navigateurs bloquent, pour des raisons de sécurité, les requêtes JavaScript émises depuis une origine (ton frontend, par exemple `localhost:4200`) vers une autre origine (ton backend, `localhost:8080`) — ce mécanisme de protection s'appelle CORS. Sans cette annotation, même si le backend fonctionne parfaitement bien tout seul, toute tentative d'appel depuis Angular échouera avec une erreur visible dans la console du navigateur.
 
+### La requête preflight (`OPTIONS`)
+
+Le contrôle CORS ne se limite pas à un simple en-tête ajouté à la réponse. Pour toutes les requêtes que le navigateur juge « non anodines » — c'est le cas de `DELETE`, de `PUT`, et de `POST` lorsqu'il transporte du JSON — le navigateur n'envoie pas directement la requête demandée. Il envoie d'abord une requête préalable de type `OPTIONS` vers la même URL, appelée *preflight*, dont le sens est : « une page servie depuis telle origine souhaite effectuer telle méthode chez toi, l'autorises-tu ? ». Ce n'est qu'après une réponse favorable du serveur que la vraie requête part.
+
+Cette mécanique explique deux observations déroutantes au premier abord.
+
+| Observation | Explication |
+|---|---|
+| Une seule action produit **deux lignes** dans l'onglet Réseau : une `preflight` puis la vraie requête | Comportement normal du navigateur, pas un bug ni une requête envoyée en double par erreur |
+| En cas d'erreur CORS, un `System.out.println` placé dans la méthode du contrôleur n'affiche **jamais rien** | C'est le `OPTIONS` préalable qui a échoué : la méthode Java n'a jamais été appelée, le navigateur ayant bloqué avant |
+
+La seconde ligne est particulièrement utile à connaître pour déboguer. Une erreur CORS ressemble à un problème de backend, mais elle se produit en amont de tout code métier : inutile d'aller chercher un bug dans la logique du contrôleur ou du repository, c'est la configuration d'autorisation d'origine qu'il faut examiner.
+
+À noter également que l'onglet Réseau du navigateur affiche, pour chaque requête, le fichier et la ligne de code qui l'ont déclenchée (colonne *Initiator* dans Chrome). C'est un réflexe de débogage précieux : lorsqu'une requête part alors qu'elle ne devrait pas — par exemple un rechargement de liste devenu inutile — cette colonne indique immédiatement quelle ligne du code en est responsable.
+
 ### Injection de dépendances côté Java
 
 ```java
@@ -919,6 +934,9 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Page blanche ou comportement incohérent au rafraîchissement, sans erreur dans la console | Cache `.angular` corrompu | Arrêter `ng serve`, puis `Remove-Item -Recurse -Force .angular`, puis relancer `ng serve` |
 | `warning: adding embedded git repository` | Un `.git` existe déjà dans un sous-dossier (généré par `ng new`) | Supprimer ce `.git` imbriqué, puis `git rm --cached -rf <dossier>`, puis refaire `git add .` |
 | Erreur CORS dans la console du navigateur lors d'un appel HTTP vers le backend | `@CrossOrigin` manquant ou mal configuré côté Spring Boot | Vérifier `@CrossOrigin(origins = "http://localhost:4200")` sur le contrôleur |
+| Deux lignes apparaissent dans l'onglet Réseau pour une seule action (une `preflight` puis la vraie requête) | Comportement normal : le navigateur demande d'abord l'autorisation via `OPTIONS` | Rien à corriger — voir la sous-section sur la requête preflight |
+| Erreur CORS alors qu'un `System.out.println` dans le contrôleur n'affiche rien | Le `OPTIONS` préalable a échoué : la méthode Java n'est jamais appelée | Chercher du côté de `@CrossOrigin`, pas dans la logique du contrôleur |
+| `LF will be replaced by CRLF` à chaque `git add` sous Windows | Git convertit les fins de ligne entre le dépôt (LF) et le disque (CRLF) | Avertissement sans conséquence, aucune action nécessaire |
 | Les données ajoutées disparaissent après un redémarrage du backend | Base H2 configurée en mémoire (comportement normal avec la config par défaut) | Attendu pour l'instant ; pour la persistance réelle, configurer H2 en mode fichier ou changer de base de données |
 | Erreur TypeScript qui persiste alors que le code semble correct | Service de langage TypeScript désynchronisé | Palette de commandes → `TypeScript: Restart TS Server` |
 | `./mvnw : Le terme n'est pas reconnu...` sous PowerShell | Forme Unix de la commande, inadaptée à PowerShell | Utiliser `.\mvnw.cmd spring-boot:run` (antislash + extension `.cmd`) |
