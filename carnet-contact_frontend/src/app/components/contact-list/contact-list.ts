@@ -11,8 +11,9 @@ import { ContactService } from '../../services/contact';
 export class ContactList implements OnInit {
   private contactService = inject(ContactService);
 
-  // Référence vers le signal du service, pas une copie.
+  // Références vers les signaux du service, pas des copies.
   contacts = this.contactService.contacts;
+  chargement = this.contactService.chargement;
 
   ngOnInit(): void {
     this.contactService.chargerContacts();

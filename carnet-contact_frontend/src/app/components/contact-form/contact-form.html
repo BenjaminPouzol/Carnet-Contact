@@ -17,5 +17,5 @@
     <input formControlName="telephone" placeholder="Téléphone" />
   </div>
 
-  <button type="submit" [disabled]="contactForm.invalid">Ajouter</button>
+  <button type="submit" [disabled]="contactForm.invalid || chargement()">Ajouter</button>
 </form>

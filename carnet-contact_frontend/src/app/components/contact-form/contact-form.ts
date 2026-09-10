@@ -1,5 +1,6 @@
 import { Component, inject, output } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ContactService } from '../../services/contact';
 import { Contact } from '../../contact.model';
 
 @Component({
@@ -10,6 +11,10 @@ import { Contact } from '../../contact.model';
 })
 export class ContactForm {
   private fb = inject(FormBuilder);
+  private contactService = inject(ContactService);
+
+  // Référence vers le signal du service : true pendant une requête HTTP.
+  chargement = this.contactService.chargement;
 
   contactAjoute = output<Contact>();
 

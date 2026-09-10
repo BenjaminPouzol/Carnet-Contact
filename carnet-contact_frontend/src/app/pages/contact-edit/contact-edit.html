@@ -7,7 +7,7 @@
     <div><input formControlName="email" placeholder="Email" /></div>
     <div><input formControlName="telephone" placeholder="Téléphone" /></div>
 
-    <button type="submit" [disabled]="contactForm.invalid">Enregistrer</button>
+    <button type="submit" [disabled]="contactForm.invalid || chargement()">Enregistrer</button>
     <a [routerLink]="['/contact', c.id]">Annuler</a>
   </form>
 } @else {

@@ -1,5 +1,10 @@
 <h1>{{ title() }}</h1>
 
+<!-- Indicateur de chargement : visible tant qu'une requête HTTP est en cours. -->
+@if (contactService.chargement()) {
+  <p class="chargement">Chargement…</p>
+}
+
 <!-- Bannière d'erreur : affichée seulement si le signal erreur() n'est pas null. -->
 @if (contactService.erreur(); as message) {
   <p class="erreur">{{ message }}</p>

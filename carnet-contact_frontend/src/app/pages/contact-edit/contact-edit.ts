@@ -23,6 +23,9 @@ export class ContactEdit implements OnInit {
     this.contactService.contacts().find(c => c.id === this.id)
   );
 
+  // true pendant une requête HTTP : sert à désactiver le bouton Enregistrer.
+  chargement = this.contactService.chargement;
+
   contactForm = this.fb.group({
     nom: ['', Validators.required],
     prenom: ['', Validators.required],

@@ -12,7 +12,7 @@
           {{ contact.prenom }} {{ contact.nom }}
         </a>
         — {{ contact.email }} — {{ contact.telephone }}
-        <button (click)="supprimer(contact.id)">Supprimer</button>
+        <button (click)="supprimer(contact.id)" [disabled]="chargement()">Supprimer</button>
       </li>
     }
   </ul>
