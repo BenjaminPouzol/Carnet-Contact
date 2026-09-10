@@ -1,0 +1,9 @@
+@if (contact(); as c) {
+  <h2>{{ c.prenom }} {{ c.nom }}</h2>
+  <p>Email : {{ c.email }}</p>
+  <p>Téléphone : {{ c.telephone }}</p>
+} @else {
+  <p>Contact introuvable (ou en cours de chargement).</p>
+}
+
+<a routerLink="/">Retour à la liste</a>

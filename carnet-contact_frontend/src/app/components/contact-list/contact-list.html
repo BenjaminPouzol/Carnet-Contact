@@ -6,7 +6,12 @@
   <ul>
     @for (contact of contacts(); track contact.id) {
       <li>
-        {{ contact.prenom }} {{ contact.nom }} — {{ contact.email }} — {{ contact.telephone }}
+        <!-- Forme tableau : chaque élément est un segment de l'URL.
+             ['/contact', 5] construit l'URL /contact/5 -->
+        <a [routerLink]="['/contact', contact.id]">
+          {{ contact.prenom }} {{ contact.nom }}
+        </a>
+        — {{ contact.email }} — {{ contact.telephone }}
         <button (click)="supprimer(contact.id)">Supprimer</button>
       </li>
     }

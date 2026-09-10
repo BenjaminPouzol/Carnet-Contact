@@ -1,9 +1,10 @@
 import { Component, OnInit, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { ContactService } from '../../services/contact';
 
 @Component({
   selector: 'app-contact-list',
-  imports: [],
+  imports: [RouterLink],
   templateUrl: './contact-list.html',
   styleUrl: './contact-list.css'
 })
