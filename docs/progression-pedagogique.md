@@ -128,11 +128,36 @@ Trois notions neuves, découpées en étapes validées une à une :
 Support : `computed()` ajouté en sous-section de la section 3, et une
 section 13 « Routing Angular » complète.
 
+### Partie 5 — Modification d'un contact
+Objectif : formulaire pré-rempli + `PUT`. Réutilise le formulaire réactif, le
+signal partagé et le routing ; donne un vrai usage à la page de détail (bouton
+« Modifier »).
+
+22. Backend : `PUT /api/contacts/{id}` combinant `@PathVariable` (id de
+    l'URL, qui fait autorité) et `@RequestBody`
+23. Service : `modifierContact()` met à jour le signal partagé via `.map()`
+24. Page `pages/contact-edit`, route `contact/:id/modifier` : `FormBuilder`
+    pré-rempli avec `patchValue()`, déclenché par un `effect()` quand les
+    données du signal arrivent (drapeau booléen pour ne le faire qu'une fois).
+    Retour à la fiche via `Router.navigate()`
+
+Notions ajoutées au support : `effect()` en sous-section de la section 3,
+`patchValue()` en sous-section de la section 7, `Router.navigate()` en
+sous-section de la section 13, et une **section 14 « Modification d'une
+ressource »** complète. Sections Backend/Git/Pense-bête renumérotées 15/16/17.
+
+À partir de cette partie, sur demande de l'utilisateur : chaque notion du
+support est suivie d'un encadré **« Dans le projet »** donnant le fichier réel
+et l'extrait de code correspondant (convention ajoutée à CLAUDE.md, à
+appliquer aussi rétroactivement quand on repasse sur une section). Fait pour
+les sections 12, 13 et 14 ; les sections 2 à 11 restent à compléter si
+l'utilisateur le souhaite.
+
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
 - Gestion d'erreurs propre sur les appels HTTP (`catchError` de RxJS)
-- Modification d'un contact existant (formulaire pré-rempli, méthode PUT/PATCH)
+- Compléter les encadrés « Dans le projet » dans les sections 2 à 11
 - Intercepteur HTTP
 - Pagination et recherche côté backend
 - Tests unitaires (fichiers `.spec.ts` déjà générés par le CLI, jamais 

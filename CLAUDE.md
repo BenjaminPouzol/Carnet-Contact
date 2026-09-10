@@ -33,6 +33,12 @@ strictement sa mise en page existante :
   contexte, le problème résolu) AVANT ou intercalé avec un bloc de syntaxe 
   générique commenté (pas l'exemple précis du carnet de contacts, une version 
   réutilisable dans un futur projet)
+- APRÈS le bloc générique, ajoute un encadré **« Dans le projet »** avec le 
+  ou les fichiers réellement concernés du carnet (chemin depuis la racine du 
+  dépôt, en lien Markdown relatif depuis docs/, ex: 
+  `[\`carnet-contact_frontend/src/app/...\`](../carnet-contact_frontend/src/app/...)`) 
+  et l'extrait de code réel correspondant, pour que je puisse lire le support 
+  et le code source en parallèle
 - Utilise des tableaux à deux colonnes pour lister des annotations/méthodes/ 
   commandes avec leur rôle, comme c'est déjà fait dans le document
 - Ne réécris jamais une section existante sauf si elle contient une erreur — 

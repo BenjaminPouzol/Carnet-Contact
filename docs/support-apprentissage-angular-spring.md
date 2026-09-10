@@ -19,9 +19,10 @@ Document de référence détaillé, organisé par notion. Chaque section combine
 11. [Cycle de vie d'un composant](#11-cycle-de-vie-dun-composant)
 12. [Signal partagé alimenté par HttpClient](#12-signal-partagé-alimenté-par-httpclient)
 13. [Routing Angular](#13-routing-angular)
-14. [Backend Spring Boot](#14-backend-spring-boot)
-15. [Git et GitHub](#15-git-et-github)
-16. [Pense-bête de dépannage](#16-pense-bête-de-dépannage)
+14. [Modification d'une ressource (PUT, formulaire pré-rempli)](#14-modification-dune-ressource-put-formulaire-pré-rempli)
+15. [Backend Spring Boot](#15-backend-spring-boot)
+16. [Git et GitHub](#16-git-et-github)
+17. [Pense-bête de dépannage](#17-pense-bête-de-dépannage)
 
 ---
 
@@ -220,6 +221,36 @@ elementCourant = computed(() =>
 | Se modifie | `.set()`, `.update()` | Jamais directement — recalcul automatique |
 | Rôle | Source de vérité | Vue dérivée d'une ou plusieurs sources |
 
+### Réagir à un changement : `effect()`
+
+`computed()` produit une **valeur**. Parfois, on ne veut pas calculer une valeur mais **déclencher une action** quand un signal change : écrire dans `localStorage`, envoyer un log, ou remplir un formulaire dès que la donnée qui doit l'alimenter est disponible. C'est le rôle d'`effect()`.
+
+```typescript
+import { signal, effect } from '@angular/core';
+
+const utilisateur = signal<string | null>(null);
+
+// La fonction est réexécutée à CHAQUE changement d'un signal qu'elle lit.
+effect(() => {
+  const u = utilisateur();
+  if (u) {
+    localStorage.setItem('dernierUtilisateur', u);
+  }
+});
+
+utilisateur.set('alice');   // l'effect s'exécute, écrit dans localStorage
+```
+
+`effect()` s'écrit dans le `constructor` d'un composant (ou dans un champ de classe) : Angular a besoin d'être dans son « contexte d'injection » pour l'enregistrer et le nettoyer automatiquement quand le composant disparaît.
+
+Un piège fréquent : un `effect()` qui modifie quelque chose à chaque exécution alors qu'on ne le voulait qu'une fois (par exemple pré-remplir un formulaire). La parade habituelle est un drapeau booléen qui mémorise que l'action a déjà eu lieu.
+
+| | `computed()` | `effect()` |
+|---|---|---|
+| Produit | Une valeur (signal en lecture seule) | Rien — un effet de bord |
+| Sert à | Dériver une donnée d'autres signals | Synchroniser avec l'extérieur (stockage, réseau, formulaire, log) |
+| Se lit | `maValeur()` | ne se lit pas |
+
 ---
 
 ## 4. Services et injection de dépendances
@@ -396,6 +427,16 @@ La propriété `monFormulaire.valid` (et son inverse `.invalid`) est recalculée
 ```
 
 Chacune de ces quatre lignes illustre bien la combinaison des bindings vus plus haut : `[formGroup]` est un binding de propriété qui relie tout le `<form>` à l'objet `FormGroup` du TypeScript ; `formControlName` fait le lien fin entre un `<input>` précis et le champ correspondant à l'intérieur de ce groupe ; `(ngSubmit)` est un binding d'événement qui capture la soumission du formulaire (que ce soit par clic sur le bouton ou par la touche Entrée) ; et `[disabled]` est encore un binding de propriété qui désactive dynamiquement le bouton tant que le formulaire entier n'est pas valide.
+
+### Pré-remplir un formulaire existant
+
+Les valeurs déclarées dans `.group({...})` ne servent qu'au démarrage. Pour afficher un formulaire déjà rempli (cas d'une page d'édition), on injecte les valeurs actuelles après coup avec `patchValue()` :
+
+```typescript
+this.monFormulaire.patchValue(objetExistant);
+```
+
+`patchValue()` n'affecte que les champs dont le nom correspond à un contrôle et ignore les clés en trop (un `id`, par exemple). Sa variante `setValue()` exige un objet correspondant exactement aux contrôles. Le cas concret — pré-remplir depuis un signal partagé chargé de façon asynchrone — est traité en section 14.
 
 ---
 
@@ -580,6 +621,8 @@ Les blocs de code qui suivent portent une mention en commentaire pour lever cett
 | `[DÉFINITIF]` | Fait partie du résultat final et restera dans le projet |
 | `[PROVISOIRE]` | Échafaudage : nécessaire pour que l'application fonctionne à cette étape précise, mais destiné à disparaître plus loin |
 
+À la fin de chaque étape, un encadré **« Dans le projet »** donne le ou les fichiers réellement modifiés du carnet de contacts, avec l'extrait de code correspondant. Le bloc générique au-dessus (`MonService`, `Item`, `ItemList`…) reste la version réutilisable dans un futur projet ; l'encadré « Dans le projet » est sa traduction concrète, à ouvrir en parallèle du fichier pour suivre le code source.
+
 ### Étape 1 — Le service devient propriétaire de la donnée
 
 La première étape ne modifie aucun composant : elle se contente d'ajouter au service la boîte partagée et la méthode qui la remplit. Rien ne change à l'écran, puisque personne ne s'en sert encore. C'est volontaire : on installe la nouvelle plomberie à côté de l'ancienne, sans rien casser.
@@ -618,6 +661,19 @@ export class MonService {
 
 On utilise `.set()` et non `.update()` parce qu'on remplace intégralement la liste par ce que le serveur vient d'envoyer : il n'est pas nécessaire de consulter l'ancienne valeur pour construire la nouvelle.
 
+**Dans le projet** — [`carnet-contact_frontend/src/app/services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts)
+
+```typescript
+private contactsSignal = signal<Contact[]>([]);
+readonly contacts = this.contactsSignal.asReadonly();
+
+chargerContacts(): void {
+  this.http.get<Contact[]>(this.apiUrl).subscribe(data => {
+    this.contactsSignal.set(data);
+  });
+}
+```
+
 ### Étape 2 — Le composant lit le signal du service
 
 Le composant abandonne son signal local et pointe vers celui du service. La ligne clé mérite d'être lue attentivement, car elle est souvent mal comprise : elle ne **copie pas** la liste, elle donne un second nom à la même boîte en mémoire. Les deux propriétés — celle du composant et celle du service — désignent le même objet ; quand le service écrit dedans, le composant n'a strictement rien à faire pour en être informé.
@@ -653,6 +709,21 @@ export class ItemList implements OnInit {
 Deux observations utiles à ce stade. D'abord, le template HTML n'a besoin d'aucune modification : il lisait déjà le signal avec des parenthèses (`items()`), et ce contrat de lecture est inchangé — seul le propriétaire du signal a bougé. Ensuite, l'import de `signal` disparaît du composant, puisqu'il n'en crée plus aucun : le composant redevient un pur consommateur d'affichage.
 
 Un piège concret guette sur l'ordre des déclarations. Écrire la propriété `items` **avant** la ligne `inject()` provoquerait une erreur à l'exécution (`cannot read properties of undefined`), car les champs d'une classe TypeScript sont initialisés dans leur ordre d'écriture : au moment d'évaluer `this.monService.items`, le service ne serait pas encore injecté.
+
+**Dans le projet** — [`carnet-contact_frontend/src/app/components/contact-list/contact-list.ts`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.ts)
+
+```typescript
+private contactService = inject(ContactService);
+
+// Référence vers le signal du service, pas une copie.
+contacts = this.contactService.contacts;
+
+ngOnInit(): void {
+  this.contactService.chargerContacts();
+}
+```
+
+Le template [`contact-list.html`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.html), lui, n'a pas changé à cette étape : il faisait déjà `@for (contact of contacts(); track contact.id)`.
 
 ### Étape 3 — L'écriture met à jour le signal partagé
 
@@ -693,6 +764,27 @@ Le résultat à observer est caractéristique de ce pattern : le composant qui *
 
 Un bon test de vérification consiste à ajouter un élément, puis à agir immédiatement dessus (le supprimer, par exemple) sans recharger la page. Si l'opération fonctionne, c'est la preuve que l'identifiant généré par la base a bien été récupéré depuis la réponse du serveur ; si elle échoue, c'est le signe que l'objet envoyé a été ajouté à la place de la réponse.
 
+**Dans le projet** — [`carnet-contact_frontend/src/app/services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts)
+
+```typescript
+addContact(contact: Contact): void {
+  this.http.post<Contact>(this.apiUrl, contact).subscribe(contactCree => {
+    // On ajoute la réponse du SERVEUR : elle porte l'id généré par la base.
+    this.contactsSignal.update(liste => [...liste, contactCree]);
+  });
+}
+```
+
+**Dans le projet** — [`carnet-contact_frontend/src/app/pages/accueil/accueil.ts`](../carnet-contact_frontend/src/app/pages/accueil/accueil.ts)
+
+```typescript
+ajouterContact(contact: Contact): void {
+  this.contactService.addContact(contact);
+}
+```
+
+Au moment où cette étape a été faite, cette méthode se trouvait dans `app.ts` (voir section 13 : elle a ensuite été déplacée dans le composant de page `Accueil` lors de la mise en place du routing).
+
 ### Étape 4 — La suppression met à jour le signal localement
 
 Une opération de suppression écrite naïvement enchaîne deux requêtes : d'abord le `DELETE`, puis un `GET` complet pour récupérer la liste à jour. Le second appel demande pourtant au serveur une information déjà connue du client — la liste précédente, moins l'élément retiré. On peut donc l'économiser en modifiant le signal directement.
@@ -721,6 +813,22 @@ supprimer(id: number): void {
 ```
 
 La mise à jour locale mérite d'être comprise comme un arbitrage plutôt que comme une règle absolue. Elle repose sur une hypothèse : le serveur a fait exactement ce qui lui était demandé, et personne d'autre n'a modifié les données entre-temps. Sur une application mono-utilisateur, cette hypothèse est sûre, et l'économie d'une requête réseau est un gain net. Sur une application où plusieurs personnes travaillent simultanément sur les mêmes données, la liste locale peut en revanche diverger de celle du serveur — on préfère alors recharger depuis le serveur après chaque écriture, ou mettre en place un mécanisme de synchronisation plus élaboré.
+
+**Dans le projet** — [`carnet-contact_frontend/src/app/services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts) et [`contact-list.ts`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.ts)
+
+```typescript
+// contact.ts
+deleteContact(id: number): void {
+  this.http.delete<void>(`${this.apiUrl}/${id}`).subscribe(() => {
+    this.contactsSignal.update(liste => liste.filter(c => c.id !== id));
+  });
+}
+
+// contact-list.ts
+supprimer(id: number): void {
+  this.contactService.deleteContact(id);
+}
+```
 
 ### Le nettoyage final
 
@@ -796,6 +904,18 @@ export const routes: Routes = [
 
 Les chemins s'écrivent **sans barre oblique initiale** : `path: ''`, `path: 'element/:id'`, jamais `path: '/'`. La barre est implicite.
 
+**Dans le projet** — [`carnet-contact_frontend/src/app/app.routes.ts`](../carnet-contact_frontend/src/app/app.routes.ts)
+
+```typescript
+export const routes: Routes = [
+  { path: '', component: Accueil, pathMatch: 'full' },
+  { path: 'contact/:id', component: ContactDetail },
+  { path: 'contact/:id/modifier', component: ContactEdit }
+];
+```
+
+Le `provideRouter(routes)`, lui, est dans [`app.config.ts`](../carnet-contact_frontend/src/app/app.config.ts) — il y était déjà, laissé par `ng new`.
+
 ### `<router-outlet />` — l'emplacement d'insertion
 
 Le composant racine cesse d'afficher directement du contenu : il devient une **coquille** qui ne contient que ce qui est commun à toutes les pages (un titre, un menu de navigation), plus un `<router-outlet />`. C'est à cet endroit précis que le routeur insère le composant correspondant à l'URL courante.
@@ -824,6 +944,23 @@ export class App {}
 
 Une distinction d'organisation utile en découle : les composants associés à une URL se rangent dans un dossier `pages/`, tandis que `components/` garde les briques réutilisables insérées *à l'intérieur* d'une page. Un composant de liste n'est pas une page ; la page qui l'affiche en est une.
 
+**Dans le projet** — [`app.ts`](../carnet-contact_frontend/src/app/app.ts) et [`app.html`](../carnet-contact_frontend/src/app/app.html)
+
+```typescript
+// app.ts — réduit à une coquille : plus aucune donnée métier
+export class App {
+  protected readonly title = signal('carnet-contact');
+}
+```
+
+```html
+<!-- app.html -->
+<h1>{{ title() }}</h1>
+<router-outlet />
+```
+
+Le contenu de l'ancienne page unique (le formulaire + la liste + la méthode `ajouterContact`) a été déplacé dans [`pages/accueil/accueil.ts`](../carnet-contact_frontend/src/app/pages/accueil/accueil.ts), désormais une page à part entière branchée sur la route `''`.
+
 ### Naviguer : `routerLink` plutôt que `href`
 
 Écrire `<a href="/element/5">` serait une erreur de fond. Un `href` classique demande au navigateur d'aller chercher une nouvelle page auprès du serveur : il détruit l'application en cours, la retélécharge et la redémarre entièrement. Tous les services sont recréés, leurs signals repartent vides, les appels réseau sont à refaire.
@@ -850,6 +987,22 @@ Dans les deux cas, il faut ajouter `RouterLink` aux `imports` du composant qui u
 | `<router-outlet />` | Emplacement où le composant de la route active est inséré |
 | `routerLink="/x"` | Lien de navigation interne, sans rechargement de page |
 | `[routerLink]="['/x', v]"` | Même chose, URL construite à partir de segments dynamiques |
+
+**Dans le projet** — [`contact-list.html`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.html)
+
+```html
+@for (contact of contacts(); track contact.id) {
+  <li>
+    <a [routerLink]="['/contact', contact.id]">
+      {{ contact.prenom }} {{ contact.nom }}
+    </a>
+    — {{ contact.email }} — {{ contact.telephone }}
+    <button (click)="supprimer(contact.id)">Supprimer</button>
+  </li>
+}
+```
+
+`contact-list.ts` a dû ajouter `RouterLink` à ses `imports` pour que le template ait le droit d'utiliser la directive.
 
 ### Lire un paramètre d'URL : `ActivatedRoute`
 
@@ -911,6 +1064,58 @@ export class Detail implements OnInit {
 <a routerLink="/">Retour</a>
 ```
 
+**Dans le projet** — [`pages/contact-detail/contact-detail.ts`](../carnet-contact_frontend/src/app/pages/contact-detail/contact-detail.ts) et [`contact-detail.html`](../carnet-contact_frontend/src/app/pages/contact-detail/contact-detail.html)
+
+```typescript
+private route = inject(ActivatedRoute);
+private contactService = inject(ContactService);
+
+private contactId = Number(this.route.snapshot.paramMap.get('id'));
+
+contact = computed(() =>
+  this.contactService.contacts().find(c => c.id === this.contactId)
+);
+
+ngOnInit(): void {
+  this.contactService.chargerContacts();
+}
+```
+
+```html
+@if (contact(); as c) {
+  <h2>{{ c.prenom }} {{ c.nom }}</h2>
+  <p>Email : {{ c.email }}</p>
+  <p>Téléphone : {{ c.telephone }}</p>
+  <a [routerLink]="['/contact', c.id, 'modifier']">Modifier</a>
+} @else {
+  <p>Contact introuvable (ou en cours de chargement).</p>
+}
+<p><a routerLink="/">Retour à la liste</a></p>
+```
+
+### Naviguer depuis le code : `Router.navigate()`
+
+`routerLink` déclenche une navigation sur un **clic** de l'utilisateur. Il arrive qu'on veuille naviguer depuis le code TypeScript, après qu'une action se soit terminée : rediriger vers la fiche d'un élément une fois enregistré, renvoyer vers l'accueil après une déconnexion, etc. C'est le rôle du service `Router`.
+
+```typescript
+import { inject } from '@angular/core';
+import { Router } from '@angular/router';
+
+export class MonComposant {
+  private router = inject(Router);
+
+  apresAction(): void {
+    // Même tableau de segments que [routerLink].
+    this.router.navigate(['/element', id]);
+  }
+}
+```
+
+| | Déclenché par | Où on l'écrit |
+|---|---|---|
+| `routerLink` / `[routerLink]` | Un clic sur un `<a>` | Le template HTML |
+| `Router.navigate([...])` | Du code | La classe TypeScript, en fin de traitement |
+
 ### Routing et rendu côté serveur (SSR)
 
 Un projet généré avec le SSR activé possède un fichier `app.routes.server.ts` qui indique, pour chaque route, *comment* la page doit être produite. Par défaut, toutes les routes sont pré-générées au moment du `build` (`RenderMode.Prerender`) — excellent pour des pages au contenu fixe.
@@ -932,7 +1137,182 @@ export const serverRoutes: ServerRoute[] = [
 
 Sans cet ajustement, `ng build` échoue en réclamant la liste des identifiants à pré-générer.
 
-## 14. Backend Spring Boot
+**Dans le projet** — [`carnet-contact_frontend/src/app/app.routes.server.ts`](../carnet-contact_frontend/src/app/app.routes.server.ts)
+
+```typescript
+export const serverRoutes: ServerRoute[] = [
+  { path: 'contact/:id', renderMode: RenderMode.Client },
+  { path: 'contact/:id/modifier', renderMode: RenderMode.Client },
+  { path: '**', renderMode: RenderMode.Prerender }
+];
+```
+
+## 14. Modification d'une ressource (PUT, formulaire pré-rempli)
+
+### Vue d'ensemble
+
+Modifier une ressource existante réunit des briques déjà vues et en ajoute quelques-unes. Le formulaire réactif (section 7) est réutilisé, mais pré-rempli au lieu d'être vide. Le service (section 12) gagne une méthode d'écriture de plus, sur le même modèle que l'ajout. Le routing (section 13) fournit l'id à modifier et le retour vers la fiche. Les notions réellement nouvelles sont au nombre de quatre : le verbe HTTP `PUT` côté client et côté serveur, la combinaison `@PathVariable` + `@RequestBody` dans une même méthode Java, `patchValue()` pour remplir un formulaire, et `effect()` pour réagir à l'arrivée asynchrone des données.
+
+### Côté serveur : `@PutMapping` et deux sources d'entrée
+
+Une méthode de contrôleur peut lire **plusieurs entrées de nature différente** dans la même signature. Pour une mise à jour, il en faut deux : *quel* enregistrement modifier (dans l'URL) et *avec quelles valeurs* (dans le corps de la requête).
+
+```java
+// @PathVariable  : lit un morceau de l'URL  (/api/ressource/5 -> 5)
+// @RequestBody   : désérialise le JSON reçu en objet Java
+@PutMapping("/{id}")
+public Ressource update(@PathVariable Long id, @RequestBody Ressource recue) {
+    // On impose l'id de l'URL à l'objet reçu : le client ne peut pas,
+    // via le corps JSON, viser un autre enregistrement que celui de l'URL.
+    recue.setId(id);
+    // save() fait un INSERT si l'id est absent, un UPDATE s'il correspond
+    // à une ligne existante — la même méthode pour les deux cas.
+    return repository.save(recue);
+}
+```
+
+| Annotation | Rôle |
+|---|---|
+| `@PutMapping("/{id}")` | Associe la méthode aux requêtes `PUT` sur `/base/{id}` |
+| `@PathVariable Long id` | Injecte le segment `{id}` de l'URL dans le paramètre |
+| `@RequestBody Ressource recue` | Convertit le corps JSON de la requête en objet Java |
+
+### Côté service : une écriture de plus, sur le modèle de l'ajout
+
+```typescript
+// [DÉFINITIF] Même forme que la méthode d'ajout : s'abonne, puis met à
+// jour le signal partagé avec la réponse du serveur.
+modifierRessource(r: Ressource): void {
+  this.http.put<Ressource>(`${this.apiUrl}/${r.id}`, r).subscribe(maj => {
+    // .map() renvoie un NOUVEAU tableau : l'élément modifié est remplacé
+    // par la réponse du serveur, tous les autres restent identiques.
+    this.itemsSignal.update(liste =>
+      liste.map(item => (item.id === maj.id ? maj : item))
+    );
+  });
+}
+```
+
+`.map()` complète la panoplie des mises à jour immuables d'un signal-liste, aux côtés du spread `[...liste, x]` (ajout) et de `.filter()` (suppression) déjà vus. Les trois ont un point commun : elles renvoient un nouveau tableau, jamais l'ancien modifié en place.
+
+| Opération | Transformation immuable |
+|---|---|
+| Ajouter | `liste => [...liste, nouvel]` |
+| Modifier | `liste => liste.map(x => x.id === maj.id ? maj : x)` |
+| Supprimer | `liste => liste.filter(x => x.id !== id)` |
+
+### Pré-remplir le formulaire : `patchValue()`
+
+Un `FormGroup` (section 7) démarre avec les valeurs passées à sa création — vides pour un formulaire d'ajout. Pour un formulaire d'édition, il faut y injecter les valeurs actuelles de la ressource. `patchValue()` fait exactement cela : il affecte les champs dont le nom correspond, et ignore les clés en trop dans l'objet fourni.
+
+```typescript
+// L'objet peut contenir plus de champs que le formulaire (ici 'id') :
+// patchValue ne garde que ceux qui correspondent à un contrôle.
+this.form.patchValue(ressource);
+```
+
+`patchValue()` est tolérant (champs manquants acceptés) ; sa variante `setValue()` exige un objet correspondant **exactement** aux contrôles du formulaire, ni plus ni moins.
+
+### Réagir à l'arrivée des données : `effect()`
+
+Sur une page d'édition, les valeurs à pré-remplir viennent du signal partagé, qui est encore vide au premier affichage (la réponse HTTP n'est pas arrivée). Il faut donc pré-remplir le formulaire *au moment* où la donnée apparaît, pas à la construction du composant.
+
+`effect()` est le pendant « effet de bord » de `computed()` : là où `computed()` **calcule une valeur** à partir de signals, `effect()` **exécute une action** chaque fois qu'un signal qu'il lit change.
+
+```typescript
+import { effect } from '@angular/core';
+
+export class Edition {
+  private rempli = false;
+
+  constructor() {
+    // Relancé à chaque changement de ressource() (donc du signal partagé).
+    effect(() => {
+      const r = this.ressource();
+      if (r && !this.rempli) {
+        this.form.patchValue(r);
+        this.rempli = true;   // garde-fou : ne pré-remplir qu'une fois,
+                              // sinon une MAJ de la liste écraserait la saisie
+      }
+    });
+  }
+}
+```
+
+`effect()` s'écrit dans le `constructor` (ou via le champ d'une classe), là où le contexte d'injection Angular est disponible. Le garde-fou booléen évite qu'un rechargement ultérieur de la liste (provoqué par une autre action) ne réécrase les modifications en cours de saisie.
+
+| | `computed()` | `effect()` |
+|---|---|---|
+| Produit | Une valeur (signal en lecture seule) | Rien — déclenche une action |
+| Sert à | Dériver une donnée d'autres signals | Synchroniser avec l'extérieur (formulaire, log, `localStorage`…) |
+| Se lit avec | `maValeur()` | ne se lit pas |
+
+### Dans le projet
+
+**Serveur** — [`carnet-contact-backend/.../controller/ContactController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/ContactController.java)
+
+```java
+@PutMapping("/{id}")
+public Contact updateContact(@PathVariable Long id, @RequestBody Contact contact) {
+    contact.setId(id);
+    return contactRepository.save(contact);
+}
+```
+
+**Service** — [`carnet-contact_frontend/src/app/services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts)
+
+```typescript
+modifierContact(contact: Contact): void {
+  this.http.put<Contact>(`${this.apiUrl}/${contact.id}`, contact).subscribe(contactMaj => {
+    this.contactsSignal.update(liste =>
+      liste.map(c => (c.id === contactMaj.id ? contactMaj : c))
+    );
+  });
+}
+```
+
+**Page d'édition** — [`carnet-contact_frontend/src/app/pages/contact-edit/contact-edit.ts`](../carnet-contact_frontend/src/app/pages/contact-edit/contact-edit.ts)
+
+```typescript
+private id = Number(this.route.snapshot.paramMap.get('id'));
+
+contact = computed(() =>
+  this.contactService.contacts().find(c => c.id === this.id)
+);
+
+contactForm = this.fb.group({
+  nom: ['', Validators.required],
+  prenom: ['', Validators.required],
+  email: ['', [Validators.required, Validators.email]],
+  telephone: ['']
+});
+
+private formulaireRempli = false;
+
+constructor() {
+  effect(() => {
+    const c = this.contact();
+    if (c && !this.formulaireRempli) {
+      this.contactForm.patchValue(c);
+      this.formulaireRempli = true;
+    }
+  });
+}
+
+ngOnInit(): void {
+  this.contactService.chargerContacts();
+}
+
+onSubmit(): void {
+  if (this.contactForm.invalid) return;
+  this.contactService.modifierContact({ id: this.id, ...this.contactForm.value } as Contact);
+  this.router.navigate(['/contact', this.id]);
+}
+```
+
+Le template [`contact-edit.html`](../carnet-contact_frontend/src/app/pages/contact-edit/contact-edit.html) est le même formulaire réactif que `contact-form.html`, avec un bouton « Enregistrer » et un lien « Annuler » qui ramène à la fiche.
+
+## 15. Backend Spring Boot
 
 Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
 
@@ -1076,7 +1456,7 @@ Le principe est exactement le même que l'injection de dépendances vue côté A
 
 ---
 
-## 15. Git et GitHub
+## 16. Git et GitHub
 
 Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
 
@@ -1133,7 +1513,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 
 ---
 
-## 16. Pense-bête de dépannage
+## 17. Pense-bête de dépannage
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
@@ -1155,3 +1535,8 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Page affichée mais toutes les listes vides, erreur réseau dans la console (`F12`) | Le backend n'est pas démarré, ou pas encore prêt | Vérifier le terminal du backend (`Started ...Application`) et tester l'URL de l'API directement dans le navigateur |
 | `cannot read properties of undefined` au démarrage d'un composant qui référence un signal de service | Une propriété utilise `this.monService` alors que la ligne `inject()` est déclarée en dessous | Remonter la ligne `inject()` au-dessus : les champs d'une classe sont initialisés dans leur ordre de déclaration |
 | Une liste ne se met pas à jour après un ajout ou une suppression faits par un autre composant | Chaque composant possède sa propre copie de la donnée dans un signal local | Déplacer la donnée dans le service (signal partagé, voir section 12) plutôt que de recharger la page |
+| Le formulaire d'édition reste vide alors que la fiche s'affiche bien | Formulaire pré-rempli à la construction, avant l'arrivée des données du signal partagé | Pré-remplir dans un `effect()` qui réagit au signal, pas dans le `constructor` directement (section 14) |
+| Le formulaire d'édition efface la saisie en cours de temps en temps | Un `effect()` de pré-remplissage se réexécute à chaque changement du signal (ex : rechargement de la liste) | Ajouter un drapeau booléen : ne `patchValue()` qu'une seule fois |
+| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 15) ; regarder la ligne `preflight` dans l'onglet Réseau |
+| Modification enregistrée côté serveur mais la fiche affiche encore l'ancienne valeur | Le signal partagé n'a pas été mis à jour après le `PUT` | Dans le service, `.update()` avec `.map()` pour remplacer l'élément modifié par la réponse du serveur |
+| `NG0203` / `inject() must be called from an injection context` sur un `effect()` | `effect()` appelé hors constructeur / hors champ de classe | Le déplacer dans le `constructor` du composant |
