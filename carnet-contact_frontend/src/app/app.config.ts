@@ -5,6 +5,7 @@ import { routes } from './app.routes';
 import { provideClientHydration, withEventReplay } from '@angular/platform-browser';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { baseUrlInterceptor } from './interceptors/base-url-interceptor';
+import { authInterceptor } from './interceptors/auth-interceptor';
 import { chargementInterceptor } from './interceptors/chargement-interceptor';
 import { erreurInterceptor } from './interceptors/erreur-interceptor';
 
@@ -20,6 +21,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(
       withInterceptors([
         baseUrlInterceptor,
+        authInterceptor,
         chargementInterceptor,
         erreurInterceptor
       ])

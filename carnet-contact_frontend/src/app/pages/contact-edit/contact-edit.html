@@ -1,15 +1,57 @@
 <h2>Modifier le contact</h2>
 
 @if (contact(); as c) {
-  <form [formGroup]="contactForm" (ngSubmit)="onSubmit()">
-    <div><input formControlName="nom" placeholder="Nom" /></div>
-    <div><input formControlName="prenom" placeholder="Prénom" /></div>
-    <div><input formControlName="email" placeholder="Email" /></div>
-    <div><input formControlName="telephone" placeholder="Téléphone" /></div>
+  <div class="carte bloc-edition">
+    <form [formGroup]="contactForm" (ngSubmit)="onSubmit()">
+      <div class="grille">
+        <div>
+          <label for="nom">Nom</label>
+          <input id="nom" formControlName="nom" />
+        </div>
+        <div>
+          <label for="prenom">Prénom</label>
+          <input id="prenom" formControlName="prenom" />
+        </div>
+        <div>
+          <label for="email">Email</label>
+          <input id="email" type="email" formControlName="email" />
+        </div>
+        <div>
+          <label for="telephone">Téléphone</label>
+          <input id="telephone" formControlName="telephone" />
+        </div>
+        <div>
+          <label for="emailPro">Email professionnel</label>
+          <input id="emailPro" type="email" formControlName="emailPro" />
+          @if (contactForm.get('emailPro')?.invalid && contactForm.get('emailPro')?.touched) {
+            <p class="erreur-champ">Format d'adresse invalide.</p>
+          }
+        </div>
+        <div>
+          <label for="photoUrl">Photo (URL)</label>
+          <input id="photoUrl" formControlName="photoUrl" />
+        </div>
+      </div>
 
-    <button type="submit" [disabled]="contactForm.invalid || chargement()">Enregistrer</button>
-    <a [routerLink]="['/contact', c.id]">Annuler</a>
-  </form>
+      <h3 class="titre-reseaux">Réseaux sociaux</h3>
+      <div class="grille">
+        @for (reseau of reseaux; track reseau.cle) {
+          <div>
+            <label [for]="'edit-' + reseau.cle">{{ reseau.nom }}</label>
+            <input [id]="'edit-' + reseau.cle" [formControlName]="reseau.cle" />
+          </div>
+        }
+      </div>
+
+      <div class="actions">
+        <button type="submit" [disabled]="contactForm.invalid || chargement()">Enregistrer</button>
+        <a class="annuler" [routerLink]="['/contact', c.id]">Annuler</a>
+      </div>
+    </form>
+  </div>
 } @else {
-  <p>Contact introuvable (ou en cours de chargement).</p>
+  <div class="carte">
+    <p class="muet">Contact introuvable (ou en cours de chargement).</p>
+    <p><a routerLink="/">Retour à la liste</a></p>
+  </div>
 }

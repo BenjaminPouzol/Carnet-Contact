@@ -1,1 +1,200 @@
-/* You can add global styles to this file, and also import other style files */
+/* ==========================================================================
+   Styles globaux du carnet de contacts.
+
+   Toutes les couleurs sont declarees UNE fois, sous forme de variables CSS
+   (les « custom properties »), puis referencees partout ailleurs par
+   var(--nom). Changer la teinte de bleu de toute l'application devient une
+   seule ligne a modifier, au lieu d'une chasse dans tous les fichiers.
+   ========================================================================== */
+
+:root {
+  /* Bleu petant : couleur PRINCIPALE. Actions courantes, liens, en-tetes. */
+  --bleu: #0b5fff;
+  --bleu-fonce: #0740b5;
+  --bleu-vif: #3d82ff;
+  --bleu-pale: #e8f0ff;
+
+  /* Rouge petant : couleur d'ACCENT, volontairement rare. Reservee a ce qui
+     detruit (supprimer, se deconnecter) et a ce qui alerte (erreurs). Un
+     rouge partout ne veut plus rien dire ; un rouge rare se remarque. */
+  --rouge: #ff1f3d;
+  --rouge-fonce: #c00e28;
+  --rouge-pale: #ffe9ec;
+
+  --fond: #f4f6fb;
+  --carte: #ffffff;
+  --texte: #131c2b;
+  --texte-doux: #5d6b83;
+  --bordure: #dce2ed;
+
+  --rayon: 12px;
+  --rayon-petit: 8px;
+  --ombre: 0 1px 2px rgb(19 28 43 / 0.06), 0 4px 12px rgb(19 28 43 / 0.05);
+  --ombre-forte: 0 6px 24px rgb(11 95 255 / 0.18);
+
+  --largeur-max: 960px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--texte);
+  background: var(--fond);
+}
+
+h1, h2, h3 {
+  margin: 0 0 0.75rem;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 1.35rem;
+}
+
+h3 {
+  font-size: 1.05rem;
+}
+
+a {
+  color: var(--bleu);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* --- Boutons ------------------------------------------------------------- */
+
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.55rem 1.1rem;
+  border: none;
+  border-radius: var(--rayon-petit);
+  background: var(--bleu);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--bleu-fonce);
+  box-shadow: var(--ombre-forte);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* L'etat desactive doit se VOIR : c'est lui qui explique a l'utilisateur
+   pourquoi son clic ne fait rien pendant une requete (section 16). */
+button:disabled {
+  background: #b9c3d4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Variante destructrice : le rouge petant, reserve a ce qui supprime. */
+button.danger {
+  background: var(--rouge);
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--rouge-fonce);
+  box-shadow: 0 6px 24px rgb(255 31 61 / 0.25);
+}
+
+/* Variante discrete, pour les actions secondaires. */
+button.fantome {
+  background: transparent;
+  color: var(--bleu);
+  border: 1.5px solid var(--bordure);
+}
+
+button.fantome:hover:not(:disabled) {
+  background: var(--bleu-pale);
+  border-color: var(--bleu);
+  box-shadow: none;
+}
+
+/* --- Champs de formulaire ------------------------------------------------ */
+
+input, textarea, select {
+  font: inherit;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  color: var(--texte);
+  background: #fff;
+  border: 1.5px solid var(--bordure);
+  border-radius: var(--rayon-petit);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--bleu);
+  box-shadow: 0 0 0 3px rgb(11 95 255 / 0.15);
+}
+
+input::placeholder, textarea::placeholder {
+  color: #9aa7bb;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--texte-doux);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* --- Briques reutilisables ---------------------------------------------- */
+
+.carte {
+  background: var(--carte);
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  padding: 1.25rem;
+}
+
+/* Grille de champs qui passe a une colonne sur petit ecran. */
+.grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.pastille {
+  display: inline-block;
+  min-width: 1.35rem;
+  padding: 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.35rem;
+  text-align: center;
+  color: #fff;
+  background: var(--rouge);
+  border-radius: 999px;
+}
+
+.muet {
+  color: var(--texte-doux);
+}
+
+.erreur-champ {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  color: var(--rouge-fonce);
+}

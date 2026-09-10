@@ -1,11 +1,49 @@
 @if (contact(); as c) {
-  <h2>{{ c.prenom }} {{ c.nom }}</h2>
-  <p>Email : {{ c.email }}</p>
-  <p>Téléphone : {{ c.telephone }}</p>
+  <div class="carte fiche-detail">
+    <div class="bandeau">
+      @if (c.photoUrl) {
+        <img class="grand-avatar" [src]="c.photoUrl" alt="" />
+      } @else {
+        <span class="grand-avatar avatar-lettre">
+          {{ (c.prenom || c.nom || '?').charAt(0).toUpperCase() }}
+        </span>
+      }
 
-  <a [routerLink]="['/contact', c.id, 'modifier']">Modifier</a>
+      <div class="titre">
+        <h2>{{ c.prenom }} {{ c.nom }}</h2>
+        <app-reseaux-sociaux [contact]="c" />
+      </div>
+    </div>
+
+    <dl class="coordonnees">
+      <div class="paire">
+        <dt>Email personnel</dt>
+        <dd><a [href]="'mailto:' + c.email">{{ c.email }}</a></dd>
+      </div>
+
+      @if (c.emailPro) {
+        <div class="paire">
+          <dt>Email professionnel</dt>
+          <dd><a [href]="'mailto:' + c.emailPro">{{ c.emailPro }}</a></dd>
+        </div>
+      }
+
+      @if (c.telephone) {
+        <div class="paire">
+          <dt>Téléphone</dt>
+          <dd><a [href]="'tel:' + c.telephone">{{ c.telephone }}</a></dd>
+        </div>
+      }
+    </dl>
+
+    <div class="actions">
+      <a class="bouton-lien" [routerLink]="['/contact', c.id, 'modifier']">Modifier</a>
+      <a class="retour" routerLink="/">Retour à la liste</a>
+    </div>
+  </div>
 } @else {
-  <p>Contact introuvable (ou en cours de chargement).</p>
+  <div class="carte">
+    <p class="muet">Contact introuvable (ou en cours de chargement).</p>
+    <p><a routerLink="/">Retour à la liste</a></p>
+  </div>
 }
-
-<p><a routerLink="/">Retour à la liste</a></p>

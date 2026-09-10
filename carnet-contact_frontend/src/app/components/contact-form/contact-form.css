@@ -1,0 +1,41 @@
+.bloc-ajout {
+  margin-bottom: 1.5rem;
+  border-top: 4px solid var(--bleu);
+}
+
+.bloc-ajout h2 {
+  margin-top: 0;
+}
+
+.bascule-details {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin: 1rem 0 0;
+  justify-content: center;
+}
+
+.bascule-details .muet {
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.details {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--bordure);
+}
+
+.titre-reseaux {
+  margin: 1.25rem 0 0.1rem;
+}
+
+.aide-reseaux {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.valider {
+  margin-top: 1.25rem;
+}

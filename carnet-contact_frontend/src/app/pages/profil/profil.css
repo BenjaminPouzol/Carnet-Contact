@@ -1,0 +1,61 @@
+.panneau-profil {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+  border-top: 4px solid var(--bleu);
+}
+
+.apercu-zone {
+  text-align: center;
+}
+
+.grand-avatar {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--bleu-pale);
+}
+
+.avatar-lettre {
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+  font-size: 3rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--bleu), var(--rouge));
+  border: none;
+}
+
+.aide {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.champ {
+  margin-bottom: 0.9rem;
+}
+
+.email-fixe {
+  font-size: 0.9rem;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.confirme {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--bleu-fonce);
+}
+
+@media (max-width: 620px) {
+  .panneau-profil {
+    grid-template-columns: 1fr;
+  }
+}

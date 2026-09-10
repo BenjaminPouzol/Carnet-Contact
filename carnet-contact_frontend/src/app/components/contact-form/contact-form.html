@@ -1,21 +1,76 @@
-<h2>Ajouter un contact</h2>
+<div class="carte bloc-ajout">
+  <h2>Ajouter un contact</h2>
 
-<form [formGroup]="contactForm" (ngSubmit)="onSubmit()">
-  <div>
-    <input formControlName="nom" placeholder="Nom" />
-  </div>
+  <form [formGroup]="contactForm" (ngSubmit)="onSubmit()">
+    <!-- Les champs essentiels, toujours visibles -->
+    <div class="grille">
+      <div>
+        <label for="nom">Nom</label>
+        <input id="nom" formControlName="nom" placeholder="Dupont" />
+      </div>
+      <div>
+        <label for="prenom">Prénom</label>
+        <input id="prenom" formControlName="prenom" placeholder="Jean" />
+      </div>
+      <div>
+        <label for="email">Email</label>
+        <input id="email" type="email" formControlName="email" placeholder="jean@exemple.fr" />
+      </div>
+      <div>
+        <label for="telephone">Téléphone</label>
+        <input id="telephone" formControlName="telephone" placeholder="06 01 02 03 04" />
+      </div>
+    </div>
 
-  <div>
-    <input formControlName="prenom" placeholder="Prénom" />
-  </div>
+    <!-- Le reste est optionnel : replié par défaut pour ne pas noyer
+         l'essentiel sous treize champs. -->
+    <button type="button" class="fantome bascule-details" (click)="basculerDetails()">
+      @if (detailsOuverts()) { − Masquer } @else { + Plus de détails }
+      <span class="muet">(email pro, photo, réseaux sociaux)</span>
+    </button>
 
-  <div>
-    <input formControlName="email" placeholder="Email" />
-  </div>
+    @if (detailsOuverts()) {
+      <div class="details">
+        <div class="grille">
+          <div>
+            <label for="emailPro">Email professionnel</label>
+            <input id="emailPro" type="email" formControlName="emailPro"
+                   placeholder="j.dupont@entreprise.fr" />
+            <!-- L'erreur ne s'affiche qu'une fois le champ QUITTÉ (touched) :
+                 signaler « email invalide » dès la première lettre tapée est
+                 inutilement agressif. -->
+            @if (contactForm.get('emailPro')?.invalid && contactForm.get('emailPro')?.touched) {
+              <p class="erreur-champ">Format d'adresse invalide.</p>
+            }
+          </div>
+          <div>
+            <label for="photoUrl">Photo (URL)</label>
+            <input id="photoUrl" formControlName="photoUrl"
+                   placeholder="https://exemple.fr/jean.jpg" />
+          </div>
+        </div>
 
-  <div>
-    <input formControlName="telephone" placeholder="Téléphone" />
-  </div>
+        <h3 class="titre-reseaux">Réseaux sociaux</h3>
+        <p class="muet aide-reseaux">
+          URL complète ou simple pseudo — les deux fonctionnent.
+        </p>
 
-  <button type="submit" [disabled]="contactForm.invalid || chargement()">Ajouter</button>
-</form>
+        <div class="grille">
+          <!-- Un seul bloc de champ, répété par la boucle. Ajouter un
+               septième réseau ne demanderait qu'une ligne dans RESEAUX. -->
+          @for (reseau of reseaux; track reseau.cle) {
+            <div>
+              <label [for]="reseau.cle">{{ reseau.nom }}</label>
+              <input [id]="reseau.cle" [formControlName]="reseau.cle"
+                     [placeholder]="'@pseudo'" />
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    <button type="submit" class="valider" [disabled]="contactForm.invalid || chargement()">
+      Ajouter
+    </button>
+  </form>
+</div>

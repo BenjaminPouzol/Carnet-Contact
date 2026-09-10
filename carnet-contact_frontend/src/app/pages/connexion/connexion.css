@@ -1,0 +1,63 @@
+.accueil-connexion {
+  display: grid;
+  place-items: center;
+  padding-top: 1.5rem;
+}
+
+.panneau {
+  width: 100%;
+  max-width: 420px;
+  /* Un filet bleu en haut de la carte : un rappel discret de la couleur
+     principale, sans repeindre tout le bloc. */
+  border-top: 4px solid var(--bleu);
+}
+
+.intro {
+  margin-top: -0.35rem;
+  font-size: 0.92rem;
+}
+
+.champ {
+  margin-bottom: 0.9rem;
+}
+
+.panneau button[type="submit"] {
+  width: 100%;
+  margin-top: 0.4rem;
+}
+
+.erreur-bloc {
+  margin: 0 0 0.9rem;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--rouge-fonce);
+  background: var(--rouge-pale);
+  border-left: 3px solid var(--rouge);
+  border-radius: var(--rayon-petit);
+}
+
+.bascule {
+  margin: 1rem 0 0;
+  font-size: 0.9rem;
+  color: var(--texte-doux);
+  text-align: center;
+}
+
+/* Un bouton qui ressemble a un lien : c'est bien un bouton (il declenche une
+   action, il ne navigue pas), donc la balise reste <button> pour rester
+   accessible au clavier et aux lecteurs d'ecran. */
+button.lien {
+  padding: 0;
+  font-weight: 600;
+  color: var(--bleu);
+  background: none;
+  box-shadow: none;
+  text-decoration: underline;
+}
+
+button.lien:hover:not(:disabled) {
+  color: var(--bleu-fonce);
+  background: none;
+  box-shadow: none;
+}

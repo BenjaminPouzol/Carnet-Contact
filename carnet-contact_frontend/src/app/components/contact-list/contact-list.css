@@ -1,0 +1,92 @@
+.cartes-contacts {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fiche {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  /* Un liseré bleu qui s'épaissit au survol : un retour visuel discret,
+     sans faire bouger la carte. */
+  border-left: 4px solid var(--bleu);
+  transition: box-shadow 0.15s ease, border-left-color 0.15s ease;
+}
+
+.fiche:hover {
+  box-shadow: 0 4px 18px rgb(11 95 255 / 0.13);
+  border-left-color: var(--rouge);
+}
+
+.lien-fiche {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 220px;
+  color: inherit;
+}
+
+.lien-fiche:hover {
+  text-decoration: none;
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar-lettre {
+  display: grid;
+  place-items: center;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--bleu), var(--bleu-vif));
+}
+
+.identite {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+}
+
+.nom-complet {
+  font-size: 1.02rem;
+}
+
+.lien-fiche:hover .nom-complet {
+  color: var(--bleu);
+}
+
+.coordonnee {
+  font-size: 0.85rem;
+}
+
+.actions-fiche {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.actions-fiche button {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+.vide {
+  text-align: center;
+}
+
+.vide p {
+  margin: 0;
+}

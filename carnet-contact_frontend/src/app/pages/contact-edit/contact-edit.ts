@@ -3,7 +3,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ContactService } from '../../services/contact';
 import { EtatHttpService } from '../../services/etat-http';
-import { Contact } from '../../contact.model';
+import { Contact, RESEAUX } from '../../contact.model';
 
 @Component({
   selector: 'app-contact-edit',
@@ -20,6 +20,8 @@ export class ContactEdit implements OnInit {
 
   private id = Number(this.route.snapshot.paramMap.get('id'));
 
+  reseaux = RESEAUX;
+
   // Le contact à modifier, retrouvé dans le signal partagé.
   contact = computed(() =>
     this.contactService.contacts().find(c => c.id === this.id)
@@ -32,7 +34,15 @@ export class ContactEdit implements OnInit {
     nom: ['', Validators.required],
     prenom: ['', Validators.required],
     email: ['', [Validators.required, Validators.email]],
-    telephone: ['']
+    telephone: [''],
+    emailPro: ['', Validators.email],
+    photoUrl: [''],
+    instagram: [''],
+    twitter: [''],
+    facebook: [''],
+    twitch: [''],
+    youtube: [''],
+    linkedin: ['']
   });
 
   private formulaireRempli = false;
@@ -46,7 +56,23 @@ export class ContactEdit implements OnInit {
     effect(() => {
       const c = this.contact();
       if (c && !this.formulaireRempli) {
-        this.contactForm.patchValue(c);
+        // Les champs optionnels valent null côté serveur, alors qu'un champ
+        // de formulaire attend une chaîne : on convertit, sinon Angular
+        // afficherait littéralement "null" dans les cases vides.
+        this.contactForm.patchValue({
+          nom: c.nom,
+          prenom: c.prenom,
+          email: c.email,
+          telephone: c.telephone ?? '',
+          emailPro: c.emailPro ?? '',
+          photoUrl: c.photoUrl ?? '',
+          instagram: c.instagram ?? '',
+          twitter: c.twitter ?? '',
+          facebook: c.facebook ?? '',
+          twitch: c.twitch ?? '',
+          youtube: c.youtube ?? '',
+          linkedin: c.linkedin ?? ''
+        });
         this.formulaireRempli = true;
       }
     });

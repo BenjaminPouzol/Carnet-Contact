@@ -1,0 +1,86 @@
+.fiche-detail {
+  border-top: 4px solid var(--bleu);
+}
+
+.bandeau {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--bordure);
+}
+
+.grand-avatar {
+  flex-shrink: 0;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--bleu-pale);
+}
+
+.avatar-lettre {
+  display: grid;
+  place-items: center;
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--bleu), var(--rouge));
+  border: none;
+}
+
+.titre h2 {
+  margin: 0 0 0.6rem;
+}
+
+/* <dl> : une liste de DÉFINITIONS, la balise juste pour des paires
+   libellé / valeur (HTML sémantique, section 9). */
+.coordonnees {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.paire dt {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--texte-doux);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.paire dd {
+  margin: 0.15rem 0 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--bordure);
+}
+
+/* Un <a> stylé comme un bouton : il NAVIGUE, donc c'est bien un lien
+   (clic droit, ouvrir dans un onglet... doivent fonctionner). */
+.bouton-lien {
+  display: inline-block;
+  padding: 0.55rem 1.1rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--bleu);
+  border-radius: var(--rayon-petit);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.bouton-lien:hover {
+  background: var(--bleu-fonce);
+  box-shadow: var(--ombre-forte);
+  text-decoration: none;
+}
+
+.retour {
+  font-size: 0.9rem;
+  color: var(--texte-doux);
+}

@@ -1,15 +1,149 @@
+/* --- En-tete ------------------------------------------------------------- */
+
+.entete {
+  /* Degrade des deux couleurs de l'application : le bleu domine largement,
+     le rouge n'apparait qu'en fin de course. */
+  background: linear-gradient(100deg, var(--bleu-fonce) 0%, var(--bleu) 55%, var(--rouge) 160%);
+  color: #fff;
+  box-shadow: 0 2px 12px rgb(19 28 43 / 0.18);
+}
+
+.entete-contenu {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  max-width: var(--largeur-max);
+  margin: 0 auto;
+  padding: 0.7rem 1.25rem;
+}
+
+.marque {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.marque:hover {
+  text-decoration: none;
+}
+
+.marque-icone {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--bleu);
+  background: #fff;
+  border-radius: var(--rayon-petit);
+}
+
+.entete nav {
+  display: flex;
+  gap: 0.35rem;
+  /* Pousse le bloc « compte » a l'oppose de la navigation. */
+  margin-right: auto;
+}
+
+.entete nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  font-weight: 600;
+  color: rgb(255 255 255 / 0.85);
+  border-radius: var(--rayon-petit);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.entete nav a:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 0.14);
+  text-decoration: none;
+}
+
+/* Classe posee par routerLinkActive sur le lien de la page courante. */
+.entete nav a.actif {
+  color: var(--bleu-fonce);
+  background: #fff;
+}
+
+.compte {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.compte-nom {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.avatar-mini {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgb(255 255 255 / 0.7);
+}
+
+.avatar-lettre {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--bleu-fonce);
+  background: #fff;
+}
+
+.compte button {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+/* --- Contenu ------------------------------------------------------------- */
+
+.contenu {
+  max-width: var(--largeur-max);
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+}
+
+/* --- Bannieres transverses ----------------------------------------------- */
+
 .erreur {
-  background: #fde2e1;
-  border: 1px solid #f5a3a0;
-  color: #8a1f1c;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
+  background: var(--rouge-pale);
+  border: 1px solid var(--rouge);
+  border-left: 4px solid var(--rouge);
+  color: var(--rouge-fonce);
+  font-weight: 500;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--rayon-petit);
+  margin: 0 0 1rem;
 }
 
 .chargement {
-  background: #e8f0fe;
-  border: 1px solid #a8c7f0;
-  color: #1a3a6b;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
+  background: var(--bleu-pale);
+  border: 1px solid var(--bleu-vif);
+  border-left: 4px solid var(--bleu);
+  color: var(--bleu-fonce);
+  font-weight: 500;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--rayon-petit);
+  margin: 0 0 1rem;
+}
+
+@media (max-width: 620px) {
+  .entete-contenu {
+    gap: 0.6rem;
+  }
+
+  .compte-nom {
+    display: none;
+  }
 }

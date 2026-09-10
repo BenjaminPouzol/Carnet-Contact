@@ -1,0 +1,73 @@
+<h2>Messages</h2>
+
+<div class="messagerie">
+  <!-- Colonne gauche : les interlocuteurs possibles -->
+  <aside class="carte colonne-gauche">
+    <h3>Comptes</h3>
+
+    @if (interlocuteurs().length === 0) {
+      <p class="muet">
+        Aucun autre compte pour l'instant. Créez-en un second pour tester la
+        messagerie.
+      </p>
+    } @else {
+      <ul class="liste-comptes">
+        @for (utilisateur of interlocuteurs(); track utilisateur.id) {
+          <li>
+            <button
+              type="button"
+              class="ligne-compte"
+              [class.selectionne]="selection()?.id === utilisateur.id"
+              (click)="ouvrir(utilisateur)">
+
+              @if (utilisateur.photoUrl) {
+                <img class="avatar" [src]="utilisateur.photoUrl" alt="" />
+              } @else {
+                <span class="avatar avatar-lettre">
+                  {{ utilisateur.nomAffichage.charAt(0).toUpperCase() }}
+                </span>
+              }
+
+              <span class="nom">{{ utilisateur.nomAffichage }}</span>
+
+              @if (nonLusDe(utilisateur.id) > 0) {
+                <span class="pastille">{{ nonLusDe(utilisateur.id) }}</span>
+              }
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  </aside>
+
+  <!-- Colonne droite : le fil de discussion -->
+  <section class="carte colonne-droite">
+    @if (selection(); as destinataire) {
+      <h3>Conversation avec {{ destinataire.nomAffichage }}</h3>
+
+      <div class="fil">
+        @if (fil().length === 0) {
+          <p class="muet">Aucun message. Écrivez le premier.</p>
+        } @else {
+          @for (message of fil(); track message.id) {
+            <!-- La bulle change de côté et de couleur selon l'auteur : c'est
+                 le seul indice visuel qui permet de suivre un dialogue. -->
+            <div class="bulle" [class.de-moi]="estDeMoi(message.expediteur.id)">
+              <p class="texte">{{ message.contenu }}</p>
+              <!-- Le pipe date formate la chaîne ISO renvoyée par le backend.
+                   'short' donne date + heure dans le format local. -->
+              <span class="horodatage">{{ message.dateEnvoi | date: 'short' }}</span>
+            </div>
+          }
+        }
+      </div>
+
+      <form [formGroup]="formulaire" (ngSubmit)="envoyer()" class="saisie">
+        <input formControlName="contenu" placeholder="Votre message…" />
+        <button type="submit" [disabled]="formulaire.invalid || chargement()">Envoyer</button>
+      </form>
+    } @else {
+      <p class="muet vide">Choisissez un compte à gauche pour ouvrir la conversation.</p>
+    }
+  </section>
+</div>

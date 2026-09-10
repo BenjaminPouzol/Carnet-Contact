@@ -1,18 +1,39 @@
 <h2>Mes contacts</h2>
 
 @if (contacts().length === 0) {
-  <p>Aucun contact enregistré.</p>
+  <div class="carte vide">
+    <p class="muet">Aucun contact enregistré. Ajoutez le premier ci-dessus.</p>
+  </div>
 } @else {
-  <ul>
+  <ul class="cartes-contacts">
     @for (contact of contacts(); track contact.id) {
-      <li>
+      <li class="carte fiche">
         <!-- Forme tableau : chaque élément est un segment de l'URL.
              ['/contact', 5] construit l'URL /contact/5 -->
-        <a [routerLink]="['/contact', contact.id]">
-          {{ contact.prenom }} {{ contact.nom }}
+        <a class="lien-fiche" [routerLink]="['/contact', contact.id]">
+          @if (contact.photoUrl) {
+            <img class="avatar" [src]="contact.photoUrl" alt="" />
+          } @else {
+            <span class="avatar avatar-lettre">
+              {{ (contact.prenom || contact.nom || '?').charAt(0).toUpperCase() }}
+            </span>
+          }
+
+          <span class="identite">
+            <strong class="nom-complet">{{ contact.prenom }} {{ contact.nom }}</strong>
+            <span class="muet coordonnee">{{ contact.email }}</span>
+            @if (contact.telephone) {
+              <span class="muet coordonnee">{{ contact.telephone }}</span>
+            }
+          </span>
         </a>
-        — {{ contact.email }} — {{ contact.telephone }}
-        <button (click)="supprimer(contact.id)" [disabled]="chargement()">Supprimer</button>
+
+        <div class="actions-fiche">
+          <app-reseaux-sociaux [contact]="contact" />
+          <button class="danger" (click)="supprimer(contact.id)" [disabled]="chargement()">
+            Supprimer
+          </button>
+        </div>
       </li>
     }
   </ul>

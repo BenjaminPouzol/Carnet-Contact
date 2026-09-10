@@ -1,10 +1,11 @@
 import { Component, OnInit, computed, inject } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ContactService } from '../../services/contact';
+import { ReseauxSociaux } from '../../components/reseaux-sociaux/reseaux-sociaux';
 
 @Component({
   selector: 'app-contact-detail',
-  imports: [RouterLink],
+  imports: [RouterLink, ReseauxSociaux],
   templateUrl: './contact-detail.html',
   styleUrl: './contact-detail.css'
 })

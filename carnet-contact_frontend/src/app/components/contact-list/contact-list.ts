@@ -2,10 +2,11 @@ import { Component, OnInit, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ContactService } from '../../services/contact';
 import { EtatHttpService } from '../../services/etat-http';
+import { ReseauxSociaux } from '../reseaux-sociaux/reseaux-sociaux';
 
 @Component({
   selector: 'app-contact-list',
-  imports: [RouterLink],
+  imports: [RouterLink, ReseauxSociaux],
   templateUrl: './contact-list.html',
   styleUrl: './contact-list.css'
 })

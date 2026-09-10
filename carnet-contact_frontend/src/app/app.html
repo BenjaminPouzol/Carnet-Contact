@@ -1,15 +1,53 @@
-<h1>{{ title() }}</h1>
+<header class="entete">
+  <div class="entete-contenu">
+    <a class="marque" routerLink="/">
+      <span class="marque-icone">C</span>
+      <span>Carnet</span>
+    </a>
 
-<!-- Indicateur de chargement : visible tant qu'au moins une requête HTTP est
-     en cours. Alimenté par chargementInterceptor. -->
-@if (etatHttp.chargement()) {
-  <p class="chargement">Chargement…</p>
-}
+    <!-- La navigation n'a de sens qu'une fois connecte. -->
+    @if (auth.connecte()) {
+      <nav>
+        <!-- routerLinkActive ajoute une classe CSS au lien de la route
+             courante : c'est Angular qui suit la navigation, on n'a aucun
+             etat « onglet actif » a gerer nous-memes. -->
+        <a routerLink="/" routerLinkActive="actif" [routerLinkActiveOptions]="{ exact: true }">
+          Contacts
+        </a>
+        <a routerLink="/messages" routerLinkActive="actif">
+          Messages
+          @if (messages.nonLus().length > 0) {
+            <span class="pastille">{{ messages.nonLus().length }}</span>
+          }
+        </a>
+        <a routerLink="/profil" routerLinkActive="actif">Profil</a>
+      </nav>
 
-<!-- Bannière d'erreur : affichée seulement si le signal erreur() n'est pas
-     null. Alimentée par erreurInterceptor. -->
-@if (etatHttp.erreur(); as message) {
-  <p class="erreur">{{ message }}</p>
-}
+      <div class="compte">
+        @if (auth.utilisateur()?.photoUrl) {
+          <img class="avatar-mini" [src]="auth.utilisateur()!.photoUrl" alt="" />
+        } @else {
+          <span class="avatar-mini avatar-lettre">
+            {{ (auth.utilisateur()?.nomAffichage || '?').charAt(0).toUpperCase() }}
+          </span>
+        }
+        <span class="compte-nom">{{ auth.utilisateur()?.nomAffichage }}</span>
+        <button type="button" class="danger" (click)="deconnexion()">Déconnexion</button>
+      </div>
+    }
+  </div>
+</header>
 
-<router-outlet />
+<main class="contenu">
+  <!-- Indicateur de chargement, alimenté par chargementInterceptor. -->
+  @if (etatHttp.chargement()) {
+    <p class="chargement">Chargement…</p>
+  }
+
+  <!-- Bannière d'erreur, alimentée par erreurInterceptor. -->
+  @if (etatHttp.erreur(); as message) {
+    <p class="erreur">{{ message }}</p>
+  }
+
+  <router-outlet />
+</main>

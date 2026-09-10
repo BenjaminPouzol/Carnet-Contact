@@ -1,0 +1,36 @@
+.reseaux {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.reseaux a {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  /* --couleur-reseau est passee depuis le TypeScript par [style.--...] :
+     une variable CSS peut etre pilotee par le composant, ce qui evite
+     d'ecrire six regles CSS presque identiques. */
+  background: var(--couleur-reseau, var(--bleu));
+  color: #fff;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.reseaux a:hover,
+.reseaux a:focus-visible {
+  transform: translateY(-2px) scale(1.06);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
+}
+
+.reseaux svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  /* currentColor : le trace SVG prend la couleur du texte du lien. C'est ce
+     qui rend un logo inline colorable en CSS, contrairement a une image. */
+  fill: currentColor;
+}

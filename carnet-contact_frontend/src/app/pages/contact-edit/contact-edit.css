@@ -1,0 +1,23 @@
+.bloc-edition {
+  border-top: 4px solid var(--bleu);
+}
+
+.titre-reseaux {
+  margin: 1.5rem 0 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--bordure);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--bordure);
+}
+
+.annuler {
+  font-size: 0.9rem;
+  color: var(--texte-doux);
+}

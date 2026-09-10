@@ -1,0 +1,40 @@
+<h2>Mon profil</h2>
+
+<div class="carte panneau-profil">
+  <div class="apercu-zone">
+    @if (apercu()) {
+      <!-- (error) : si l'URL ne pointe pas vers une image, l'evenement error
+           de la balise <img> se declenche ; on masque alors l'apercu plutot
+           que de laisser une icone d'image cassee. -->
+      <img class="grand-avatar" [src]="apercu()" alt="Aperçu de la photo de profil" />
+    } @else {
+      <span class="grand-avatar avatar-lettre">
+        {{ (utilisateur()?.nomAffichage || '?').charAt(0).toUpperCase() }}
+      </span>
+    }
+    <p class="muet aide">Collez l'adresse d'une image en ligne.</p>
+  </div>
+
+  <form [formGroup]="formulaire" (ngSubmit)="onSubmit()" class="formulaire-profil">
+    <div class="champ">
+      <label for="nomAffichage">Nom affiché</label>
+      <input id="nomAffichage" formControlName="nomAffichage" placeholder="Votre nom" />
+    </div>
+
+    <div class="champ">
+      <label for="photoUrl">Photo de profil (URL)</label>
+      <input id="photoUrl" formControlName="photoUrl" placeholder="https://exemple.fr/moi.jpg" />
+    </div>
+
+    <p class="muet email-fixe">
+      Email du compte : <strong>{{ utilisateur()?.email }}</strong>
+    </p>
+
+    <div class="actions">
+      <button type="submit" [disabled]="formulaire.invalid || chargement()">Enregistrer</button>
+      @if (enregistre()) {
+        <span class="confirme">Profil enregistré</span>
+      }
+    </div>
+  </form>
+</div>

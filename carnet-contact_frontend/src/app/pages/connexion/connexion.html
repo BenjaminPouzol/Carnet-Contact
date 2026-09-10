@@ -1,0 +1,51 @@
+<div class="accueil-connexion">
+  <div class="carte panneau">
+    <h2>
+      @if (mode() === 'connexion') { Se connecter } @else { Créer un compte }
+    </h2>
+    <p class="muet intro">
+      @if (mode() === 'connexion') {
+        Vos contacts sont privés : connectez-vous pour y accéder.
+      } @else {
+        Un compte suffit pour gérer votre carnet et échanger des messages.
+      }
+    </p>
+
+    <form [formGroup]="formulaire" (ngSubmit)="onSubmit()">
+      <div class="champ">
+        <label for="email">Email</label>
+        <input id="email" type="email" formControlName="email" placeholder="vous@exemple.fr" />
+      </div>
+
+      <div class="champ">
+        <label for="mdp">Mot de passe</label>
+        <input id="mdp" type="password" formControlName="motDePasse" placeholder="6 caractères minimum" />
+      </div>
+
+      @if (mode() === 'inscription') {
+        <div class="champ">
+          <label for="nom">Nom affiché <span class="muet">(optionnel)</span></label>
+          <input id="nom" formControlName="nomAffichage" placeholder="Comment les autres vous verront" />
+        </div>
+      }
+
+      @if (messageErreur(); as message) {
+        <p class="erreur-bloc">{{ message }}</p>
+      }
+
+      <button type="submit" [disabled]="formulaire.invalid || chargement()">
+        @if (mode() === 'connexion') { Se connecter } @else { Créer mon compte }
+      </button>
+    </form>
+
+    <p class="bascule">
+      @if (mode() === 'connexion') {
+        Pas encore de compte ?
+        <button type="button" class="lien" (click)="basculer()">Créer un compte</button>
+      } @else {
+        Déjà inscrit ?
+        <button type="button" class="lien" (click)="basculer()">Se connecter</button>
+      }
+    </p>
+  </div>
+</div>
