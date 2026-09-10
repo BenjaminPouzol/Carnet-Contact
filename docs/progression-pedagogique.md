@@ -255,15 +255,100 @@ quoi » entre intercepteur et service, et une liste « ce qu'un intercepteur ne
 doit pas faire ». Six entrées ajoutées au pense-bête. Sections Backend/Git/
 Pense-bête renumérotées 18/19/20.
 
+### Partie 9 — Comptes, messagerie, champs enrichis et refonte visuelle
+Demande groupée de l'utilisateur : « la connexion pour avoir accès à ses
+contacts », une messagerie interne, l'email professionnel, les réseaux
+sociaux avec logos, la photo de profil, et une interface plus plaisante en
+bleu et rouge pétants. Soit l'équivalent de quatre ou cinq parties d'un coup.
+
+Rupture méthodologique assumée : au lieu d'étapes validées une à une, un
+seul tour de **questions préalables** (4 questions) puis une livraison
+complète. Motif : quatre décisions changeaient l'architecture assez
+profondément pour que deviner aurait fait construire la mauvaise chose.
+Réponses retenues :
+- Messagerie **entre utilisateurs inscrits** (pas un message vers un contact,
+  ni un envoi SMTP)
+- **Spring Security + BCrypt + JWT** (plutôt qu'une session cookie ou une
+  version maison), choix cohérent avec la Partie 8 : l'intercepteur
+  d'authentification est le prolongement direct de la section 17
+- Photo de profil par **URL** (pas d'upload de fichier)
+- Thème **clair**, bleu en couleur principale, rouge réservé au destructeur
+
+#### Backend
+36. Dépendances : `spring-boot-starter-security` et JJWT 0.13.0 (déjà
+    présents dans le dépôt Maven local). Spring Boot 4.1.1 → Spring
+    Security 7.0.5, dont l'API de configuration a été vérifiée sur place
+    plutôt que supposée
+37. Entité `Utilisateur` (table renommée `utilisateur`, `user` étant réservé
+    en SQL), entité `Message` (deux `@ManyToOne` vers le même type, d'où des
+    `@JoinColumn` nommés). `Contact` gagne `emailPro`, `photoUrl`, six
+    champs de réseaux, et un `@ManyToOne` vers son propriétaire
+38. Pas d'entité « Conversation » : le fil entre A et B se déduit des
+    messages. Pas de collection inverse dans `Utilisateur` non plus — évite
+    la récursion Jackson et une collection chargée pour rien
+39. `JwtService`, `JwtAuthFilter` (`OncePerRequestFilter`), `SecurityConfig`
+    (stateless, CORS centralisé, `/api/auth/**` public). Vérification du mot
+    de passe faite à la main par `passwordEncoder.matches()` : pas besoin de
+    câbler un `AuthenticationManager`, et c'est plus lisible
+40. Contrôleurs réécrits autour de `@AuthenticationPrincipal` : le
+    propriétaire est **imposé par le serveur**, et les accès par id passent
+    par `findByIdAndProprietaireId`
+41. `application.properties` complété : H2 en mémoire nommée + console H2
+    activée (le manque relevé en début de Partie 8), secret JWT surchargeable
+    par variable d'environnement, exclusion de
+    `UserDetailsServiceAutoConfiguration`
+
+#### Frontend
+42. `SessionService` (jeton + compte, `localStorage` protégé par
+    `isPlatformBrowser`) séparé de `AuthService` (appels HTTP) — application
+    directe de la leçon de la section 17 sur la boucle de dépendances
+43. `authInterceptor` (quatrième intercepteur), `authGuard` (`CanActivateFn`),
+    routes protégées, `RenderMode.Client` pour tout sauf `/connexion`
+44. `erreurInterceptor` étendu : déconnexion automatique sur 401 **si un
+    jeton existait**, et silence sur les appels `/api/auth/` (le formulaire
+    affiche son propre message)
+45. Pages `connexion` (un composant pour connexion et inscription),
+    `messages` (liste des comptes + fil avec bulles), `profil` (nom affiché,
+    photo, aperçu live)
+46. Composant `reseaux-sociaux` : `input.required()`, `@switch`, SVG en
+    ligne colorés par `currentColor`, variable CSS pilotée depuis le
+    TypeScript. Les six réseaux viennent d'une constante `RESEAUX`, parcourue
+    aussi bien à l'affichage qu'à la saisie (`[formControlName]` dynamique)
+47. Refonte visuelle : `styles.css` devient un petit système de design
+    (variables de couleurs, rayons, ombres ; styles de boutons, champs,
+    cartes, grille auto-fit). En-tête à dégradé bleu→rouge avec navigation
+    et pastille de non-lus
+
+#### Vérifications faites
+- Backend testé au `curl` de bout en bout : 401 sans jeton et avec jeton
+  invalide, 409 sur email déjà pris, isolation effective entre deux comptes
+  (404 quand Bob visait un contact d'Alice), messagerie avec marquage des
+  lus, 400 sur message vide, et absence du mot de passe dans tous les JSON
+- Deux défauts trouvés **par ces tests** et corrigés : 403 au lieu de 401
+  (pas d'`AuthenticationEntryPoint`) et 403 au lieu de 404 (redispatch vers
+  `/error` que `OncePerRequestFilter` ne rejoue pas)
+- Frontend : `ng build` passe, et `ng serve` vérifié à l'exécution — rendu
+  SSR de `/connexion`, coquille client pour les routes protégées, aucune
+  erreur `localStorage`
+- Non vérifié : le parcours réel dans un navigateur (aucun navigateur
+  disponible dans l'environnement). À faire au premier lancement.
+
+Notions ajoutées au support : **section 18 « Authentification »**,
+**section 19 « Relations entre entités JPA »**, **section 20 « Composants
+réutilisables : input() et boucles de configuration »**, **section 21 « Mise
+en forme : variables CSS et cohérence visuelle »**. 14 entrées ajoutées au
+pense-bête. Sections Backend/Git/Pense-bête renumérotées 22/23/24.
+
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
 - Pagination et recherche côté backend
 - Tests unitaires (fichiers `.spec.ts` déjà générés par le CLI, jamais 
-  exploités jusqu'ici)
-- Console H2 non activée : `application.properties` ne contient que
-  `spring.application.name`, alors que la dépendance est présente. Aucun
-  moyen d'inspecter la table en direct pour l'instant
+  exploités jusqu'ici) — d'autant plus utiles maintenant que la logique
+  d'autorisation mériterait d'être verrouillée par des tests
+- Rafraîchissement du jeton (actuellement 24 h, puis reconnexion)
+- Messagerie : les nouveaux messages n'arrivent qu'au rechargement du fil
+  (pas de temps réel ni de rafraîchissement périodique)
 
 ## Comment poursuivre cette philosophie
 

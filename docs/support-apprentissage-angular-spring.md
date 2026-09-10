@@ -23,9 +23,13 @@ Document de référence détaillé, organisé par notion. Chaque section combine
 15. [Gestion des erreurs HTTP (`catchError`)](#15-gestion-des-erreurs-http-catcherror)
 16. [Indicateur de chargement (`finalize`)](#16-indicateur-de-chargement-finalize)
 17. [Intercepteurs HTTP](#17-intercepteurs-http)
-18. [Backend Spring Boot](#18-backend-spring-boot)
-19. [Git et GitHub](#19-git-et-github)
-20. [Pense-bête de dépannage](#20-pense-bête-de-dépannage)
+18. [Authentification (Spring Security, BCrypt, JWT)](#18-authentification-spring-security-bcrypt-jwt)
+19. [Relations entre entités JPA](#19-relations-entre-entités-jpa)
+20. [Composants réutilisables : `input()` et boucles de configuration](#20-composants-réutilisables--input-et-boucles-de-configuration)
+21. [Mise en forme : variables CSS et cohérence visuelle](#21-mise-en-forme--variables-css-et-cohérence-visuelle)
+22. [Backend Spring Boot](#22-backend-spring-boot)
+23. [Git et GitHub](#23-git-et-github)
+24. [Pense-bête de dépannage](#24-pense-bête-de-dépannage)
 
 ---
 
@@ -1665,7 +1669,7 @@ protected contactService = inject(ContactService);
 
 ### Pourquoi le POST met plus longtemps à signaler l'échec que le GET
 
-Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 18). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
+Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 22). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
 
 ## 16. Indicateur de chargement (`finalize`)
 
@@ -2091,7 +2095,767 @@ Effet de bord notable : `ContactForm` n'injecte plus `ContactService` (il n'y re
 - **Oublier `next()`** ou ne pas retourner son résultat : la requête ne part jamais, sans aucun message d'erreur.
 - **Supposer qu'il ne tourne que dans le navigateur.** Avec le SSR (section 13), les intercepteurs s'exécutent aussi côté serveur, sur le `GET` initial : rien qui touche `window` ou `localStorage` ne doit y figurer sans précaution.
 
-## 18. Backend Spring Boot
+## 18. Authentification (Spring Security, BCrypt, JWT)
+
+### Le problème : une API ouverte à tous
+
+Jusqu'ici, `GET /api/contacts` renvoyait **toute** la table à quiconque la demandait. Il n'y avait ni comptes, ni propriétaire : le carnet était unique et public. Deux besoins apparaissent en même temps, et ils sont liés :
+
+- **Authentifier** : savoir *qui* fait la requête.
+- **Autoriser** : décider ce que cette personne peut voir et modifier.
+
+Un point est à poser d'emblée, parce qu'il commande tout le reste : **la seule protection réelle est côté serveur**. Tout ce qu'on écrit dans Angular — cacher un bouton, bloquer une route — améliore l'expérience mais ne protège rien : n'importe qui peut appeler l'API directement avec `curl`. Le frontend rend l'application agréable, le backend la rend sûre.
+
+### Hacher un mot de passe, et pourquoi ce n'est pas chiffrer
+
+Un mot de passe ne doit **jamais** être stocké en clair, ni même chiffré. Chiffrer est réversible : celui qui possède la clé retrouve la valeur d'origine. **Hacher** est à sens unique — il n'existe aucun moyen de remonter du haché au mot de passe.
+
+Vérifier une connexion ne consiste donc pas à déchiffrer, mais à **rehacher** ce que l'utilisateur vient de taper et à comparer les deux hachés.
+
+BCrypt ajoute deux propriétés indispensables :
+
+| Propriété | Ce qu'elle empêche |
+|---|---|
+| Un **sel** aléatoire par mot de passe | Deux comptes ayant le même mot de passe ont des hachés différents : on ne peut pas repérer les mots de passe communs, ni utiliser une table pré-calculée |
+| Une **lenteur volontaire** (calcul coûteux) | Tester des milliards de combinaisons devient impraticable — là où un hachage rapide (MD5, SHA-1) en permet des milliards par seconde |
+
+```java
+// Déclaré une fois comme bean, injecté partout où c'est nécessaire
+@Bean
+PasswordEncoder passwordEncoder() {
+    return new BCryptPasswordEncoder();
+}
+
+// À l'inscription : on hache AVANT d'atteindre la base
+utilisateur.setMotDePasse(passwordEncoder.encode(motDePasseEnClair));
+
+// À la connexion : on compare, on ne déchiffre pas
+boolean correct = passwordEncoder.matches(motDePasseEnClair, utilisateur.getMotDePasse());
+```
+
+### Le JWT : une identité qui se transporte
+
+Une fois le mot de passe vérifié, il faut que les requêtes suivantes n'aient pas à le redemander. La méthode retenue ici est le **JWT** (JSON Web Token).
+
+Un JWT est une chaîne en trois parties séparées par des points : `en-tête.charge_utile.signature`. Les deux premières sont du JSON encodé en base64, donc **lisibles par n'importe qui** — on n'y met jamais de secret. La troisième est une signature calculée avec une clé que seul le serveur connaît : elle ne rend pas le contenu secret, elle rend son **falsification** impossible.
+
+L'intérêt tient en une phrase : **le serveur n'a rien à stocker**. Il ne tient aucune liste de sessions ouvertes ; il lui suffit de vérifier que la signature du jeton présenté correspond à sa clé. On parle d'authentification « sans état » (*stateless*).
+
+| Notion | Rôle |
+|---|---|
+| `subject` | Le champ standard désignant à qui appartient le jeton (ici, l'email) |
+| `issuedAt` / `expiration` | Dates d'émission et de péremption — un jeton volé ne vaut pas éternellement |
+| `signWith(cle)` | Appose la signature ; sans la clé, impossible d'en produire une valide |
+| `verifyWith(cle)` | Vérifie signature ET expiration à la lecture |
+
+```java
+@Service
+public class JwtService {
+    private final SecretKey cle;
+
+    public JwtService(@Value("${app.jwt.secret}") String secret) {
+        // HS256 exige une clé d'au moins 256 bits, soit 32 caractères
+        this.cle = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public String genererJeton(String email) {
+        Instant maintenant = Instant.now();
+        return Jwts.builder()
+                .subject(email)
+                .issuedAt(Date.from(maintenant))
+                .expiration(Date.from(maintenant.plusMillis(86_400_000)))
+                .signWith(cle)
+                .compact();
+    }
+
+    /** Rend l'email, ou null si le jeton est expiré ou trafiqué. */
+    public String emailDuJeton(String jeton) {
+        try {
+            return Jwts.parser().verifyWith(cle).build()
+                    .parseSignedClaims(jeton).getPayload().getSubject();
+        } catch (JwtException | IllegalArgumentException e) {
+            // Un jeton invalide n'est pas une panne : c'est un cas normal,
+            // auquel l'appelant doit réagir en refusant l'accès.
+            return null;
+        }
+    }
+}
+```
+
+`@Value` injecte une valeur venue de `application.properties` (et non un autre bean). La syntaxe `${VARIABLE:defaut}` permet de surcharger par une variable d'environnement — une clé de signature ne doit **jamais** être versionnée dans un vrai projet.
+
+### Le filtre : relire le jeton à chaque requête entrante
+
+Côté serveur, un **filtre** joue exactement le rôle qu'un intercepteur joue côté client (section 17) : il voit passer toutes les requêtes et traite une préoccupation transverse à un seul endroit. Côté Angular un intercepteur **ajoute** le jeton aux requêtes sortantes ; côté Spring un filtre le **relit** sur les requêtes entrantes. Même idée, appliquée aux deux bouts de la chaîne.
+
+```java
+@Component
+public class JwtAuthFilter extends OncePerRequestFilter {
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest requete,
+                                    HttpServletResponse reponse,
+                                    FilterChain chaine) throws ServletException, IOException {
+        String entete = requete.getHeader("Authorization");
+
+        if (entete != null && entete.startsWith("Bearer ")) {
+            String email = jwtService.emailDuJeton(entete.substring(7));
+
+            if (email != null) {
+                // Le SecurityContext : un porte-clés propre à la requête en
+                // cours, que Spring Security consulte pour autoriser, et que
+                // les contrôleurs lisent pour savoir QUI parle.
+                var auth = new UsernamePasswordAuthenticationToken(email, null, List.of());
+                SecurityContextHolder.getContext().setAuthentication(auth);
+            }
+        }
+
+        // Toujours passer la main, même sans jeton valide : ce filtre
+        // AUTHENTIFIE, il n'autorise pas. Sans cet appel, les routes
+        // publiques (connexion, inscription) seraient bloquées aussi.
+        chaine.doFilter(requete, reponse);
+    }
+}
+```
+
+`OncePerRequestFilter` garantit une seule exécution par requête, même quand le conteneur effectue des redirections internes.
+
+### La configuration : ce qui est ouvert, ce qui est fermé
+
+Dès que `spring-boot-starter-security` est présent dans le `pom.xml`, **tout est fermé par défaut** et un mot de passe aléatoire s'affiche au démarrage. La classe de configuration reprend la main.
+
+```java
+@Configuration
+public class SecurityConfig {
+
+    @Bean
+    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth
+                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                    .requestMatchers("/api/auth/**").permitAll()
+                    .anyRequest().authenticated())
+            .addFilterBefore(monFiltre, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+}
+```
+
+| Réglage | Pourquoi |
+|---|---|
+| `cors(...)` | Quand Spring Security est en place, c'est **lui** qui gère le CORS. Les `@CrossOrigin` des contrôleurs doivent disparaître, sinon le preflight `OPTIONS` est rejeté avant d'atteindre le contrôleur |
+| `csrf().disable()` | La protection CSRF sert aux applications à session par cookie, où le navigateur envoie l'identité automatiquement. Ici l'identité voyage dans un en-tête que seul notre JavaScript ajoute : l'attaque visée n'existe pas |
+| `STATELESS` | Aucune session serveur, aucun cookie. Chaque requête se justifie seule, par son jeton |
+| `OPTIONS` en `permitAll` | Le preflight du navigateur ne porte jamais de jeton |
+| `/api/auth/**` en `permitAll` | On ne peut pas exiger un jeton pour venir en chercher un |
+| `anyRequest().authenticated()` | Tout le reste est fermé — la règle par défaut est « interdit », jamais « autorisé » |
+
+Deux réglages de plus, dont l'absence produit des symptômes déroutants :
+
+```java
+    // Sans point d'entrée explicite, Spring répond 403 à une requête non
+    // authentifiée. Or les deux codes ne disent pas la même chose :
+    // 401 = « je ne sais pas qui tu es », 403 = « je sais, mais c'est interdit ».
+    .exceptionHandling(ex -> ex.authenticationEntryPoint(
+            (req, res, err) -> res.sendError(HttpServletResponse.SC_UNAUTHORIZED)))
+
+    // /error doit rester ouvert : quand un contrôleur lève une
+    // ResponseStatusException, Spring réachemine la requête vers /error — et
+    // sur ce second passage, OncePerRequestFilter ne rejoue PAS le filtre
+    // JWT. L'identité perdue, un 404 ressort transformé en 403.
+    .requestMatchers("/error").permitAll()
+```
+
+### Savoir qui parle, dans le contrôleur
+
+`@AuthenticationPrincipal` injecte le « principal » posé par le filtre. C'est la **seule** source d'identité digne de confiance : jamais un identifiant lu dans l'URL ou le corps de la requête.
+
+```java
+@GetMapping
+public List<Contact> mesContacts(@AuthenticationPrincipal String email) {
+    Long moi = utilisateurRepository.findByEmail(email).orElseThrow().getId();
+    return contactRepository.findByProprietaireIdOrderByNomAsc(moi);
+}
+
+@PostMapping
+public Contact creer(@RequestBody Contact contact, @AuthenticationPrincipal String email) {
+    // Le propriétaire est IMPOSÉ par le serveur, pas lu dans la requête :
+    // sinon un client pourrait écrire dans le carnet d'un autre.
+    contact.setProprietaire(utilisateurConnecte(email));
+    return contactRepository.save(contact);
+}
+```
+
+Pour les accès par identifiant, la protection tient dans la requête elle-même : on cherche par id **et** par propriétaire. Demander la ressource 42 quand elle n'est pas à soi ne renvoie pas 42 — cela ne renvoie rien.
+
+```java
+Optional<Contact> findByIdAndProprietaireId(Long id, Long proprietaireId);
+```
+
+### Côté Angular : où ranger le jeton
+
+Le client doit conserver le jeton entre deux chargements de page, sinon un simple F5 déconnecte. `localStorage` remplit ce rôle — avec une contrainte : **il n'existe pas côté serveur**. Avec le SSR (section 13), y toucher pendant le rendu serveur fait échouer la page.
+
+`PLATFORM_ID` est le jeton d'injection qui dit sur quelle plateforme le code tourne.
+
+```typescript
+@Injectable({ providedIn: 'root' })
+export class SessionService {
+  private navigateur = isPlatformBrowser(inject(PLATFORM_ID));
+
+  private jetonSignal = signal<string | null>(null);
+  // « connecté » n'est pas une donnée à stocker : c'est une conséquence.
+  readonly connecte = computed(() => this.jetonSignal() !== null);
+
+  constructor() {
+    if (this.navigateur) {
+      const jeton = localStorage.getItem('jeton');
+      if (jeton) this.jetonSignal.set(jeton);
+    }
+  }
+
+  jetonActuel(): string | null {
+    return this.jetonSignal();
+  }
+}
+```
+
+Ce service est délibérément **séparé** du service qui appelle l'API. L'intercepteur d'authentification doit lire le jeton ; s'il injectait un service dépendant de `HttpClient`, on retomberait sur la boucle de dépendances évitée en section 17.
+
+### L'intercepteur d'authentification
+
+C'est le cas d'usage annoncé en section 17 comme « le plus connu des intercepteurs », cette fois pour de vrai.
+
+```typescript
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const jeton = inject(SessionService).jetonActuel();
+
+  // Pas de jeton : on laisse passer tel quel. Envoyer « Bearer null »
+  // ferait échouer la requête au lieu de la laisser anonyme.
+  if (!jeton) {
+    return next(req);
+  }
+
+  return next(req.clone({
+    setHeaders: { Authorization: `Bearer ${jeton}` }
+  }));
+};
+```
+
+Son symétrique est la réaction au **401**. Un jeton a une durée de vie ; à son expiration, *toutes* les requêtes échouent d'un coup. Traiter ce cas dans chaque service serait exactement la duplication que les intercepteurs ont supprimée.
+
+```typescript
+catchError((erreur: HttpErrorResponse) => {
+  // La condition sur le jeton est essentielle : sans elle, un mot de passe
+  // erroné sur la page de connexion (401 aussi) déclencherait une
+  // redirection vers... la page de connexion.
+  if (erreur.status === 401 && session.jetonActuel() !== null) {
+    session.vider();
+    router.navigate(['/connexion']);
+  }
+  return throwError(() => erreur);
+})
+```
+
+### La garde de route (`CanActivateFn`)
+
+Une **garde** est une fonction qu'Angular appelle avant d'activer une route, et qui répond `true` (on passe) ou `false` (on bloque).
+
+Le problème qu'elle résout : sans elle, taper `/contact/3` sans être connecté afficherait une page vide et une bannière 401 — techniquement correct, incompréhensible pour l'utilisateur.
+
+```typescript
+export const authGuard: CanActivateFn = () => {
+  const session = inject(SessionService);
+  const router = inject(Router);
+
+  if (session.connecte()) {
+    return true;
+  }
+
+  // Rediriger plutôt que renvoyer false sèchement : l'utilisateur atterrit
+  // sur un écran qui lui dit quoi faire.
+  router.navigate(['/connexion']);
+  return false;
+};
+```
+
+```typescript
+// canActivate prend un TABLEAU : on peut enchaîner plusieurs gardes,
+// et toutes doivent dire oui.
+{ path: '', component: Accueil, canActivate: [authGuard] }
+```
+
+**À ne jamais oublier : une garde n'est pas une sécurité.** Elle guide l'utilisateur ; elle n'empêche personne d'appeler l'API à la main.
+
+### Conséquence sur le SSR
+
+Les routes protégées dépendent de `localStorage`, absent côté serveur. Les prérendre produirait le HTML de la page de connexion pour chacune, servi ensuite à des utilisateurs déjà connectés.
+
+```typescript
+export const serverRoutes: ServerRoute[] = [
+  // Ne dépend d'aucune donnée : pré-générable au build
+  { path: 'connexion', renderMode: RenderMode.Prerender },
+  // Tout le reste : construit par le navigateur, quand la session est connue
+  { path: '**', renderMode: RenderMode.Client }
+];
+```
+
+### Dans le projet
+
+**Backend** — [`security/JwtService.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/security/JwtService.java), [`security/JwtAuthFilter.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/security/JwtAuthFilter.java), [`security/SecurityConfig.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/security/SecurityConfig.java), [`controller/AuthController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/AuthController.java)
+
+```java
+// AuthController — un seul message pour « email inconnu » et « mot de passe
+// faux » : distinguer les deux renseignerait un attaquant sur les comptes
+// qui existent réellement.
+if (trouve.isEmpty()
+        || !passwordEncoder.matches(demande.motDePasse(), trouve.get().getMotDePasse())) {
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body("Email ou mot de passe incorrect.");
+}
+```
+
+**Configuration** — [`application.properties`](../carnet-contact-backend/src/main/resources/application.properties)
+
+```properties
+carnet.jwt.secret=${CARNET_JWT_SECRET:cle-de-developpement-a-remplacer-en-production-32c}
+carnet.jwt.duree-ms=86400000
+
+# Sans cet exclude, Spring Boot cree un utilisateur "user" en memoire avec un
+# mot de passe aleatoire affiche a chaque demarrage — trompeur, puisque notre
+# authentification passe entierement par le filtre JWT.
+spring.autoconfigure.exclude=org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+```
+
+**Frontend** — [`services/session.ts`](../carnet-contact_frontend/src/app/services/session.ts), [`services/auth.ts`](../carnet-contact_frontend/src/app/services/auth.ts), [`interceptors/auth-interceptor.ts`](../carnet-contact_frontend/src/app/interceptors/auth-interceptor.ts), [`auth-guard.ts`](../carnet-contact_frontend/src/app/auth-guard.ts), [`pages/connexion/`](../carnet-contact_frontend/src/app/pages/connexion/)
+
+`AuthService` **retourne** ses Observables au lieu de s'y abonner, contrairement à `ContactService` — parce que l'appelant a besoin de savoir quand ça a réussi, pour naviguer :
+
+```typescript
+connexion(email: string, motDePasse: string): Observable<ReponseAuth> {
+  return this.http.post<ReponseAuth>(`${this.apiUrl}/connexion`, { email, motDePasse }).pipe(
+    // tap() observe le flux sans le modifier : idéal pour un effet de bord
+    // (mémoriser la session) en laissant la réponse continuer vers l'appelant.
+    tap(reponse => this.session.ouvrir(reponse.jeton, reponse.utilisateur))
+  );
+}
+```
+
+## 19. Relations entre entités JPA
+
+### Le problème : des données qui se pointent l'une l'autre
+
+Tant qu'une entité vivait seule, une table suffisait. Dès qu'un contact **appartient** à un utilisateur, et qu'un message **relie** deux utilisateurs, il faut exprimer ces liens — en base sous forme de clés étrangères, et en Java sous forme de champs.
+
+### `@ManyToOne` : le côté qui porte la clé étrangère
+
+« Plusieurs contacts pointent vers un utilisateur. » C'est le côté **propriétaire** de la relation : c'est la table `contact` qui reçoit une colonne supplémentaire.
+
+```java
+@Entity
+public class Contact {
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "proprietaire_id")
+    @JsonIgnore
+    private Utilisateur proprietaire;
+}
+```
+
+| Élément | Rôle |
+|---|---|
+| `@ManyToOne` | Plusieurs entités de ce côté pour une seule de l'autre |
+| `@JoinColumn(name = …)` | Nomme explicitement la colonne de clé étrangère. **Obligatoire** quand une entité a deux relations vers le même type, sinon Hibernate ne peut pas les distinguer |
+| `fetch = LAZY` | L'entité liée n'est chargée que si on la demande vraiment, au lieu d'une jointure systématique |
+| `optional = false` | La colonne est `NOT NULL` : un contact sans propriétaire n'a pas de sens |
+| `@JsonIgnore` | Le champ ne part pas dans le JSON |
+
+Le cas des deux relations vers le même type est celui du message :
+
+```java
+@Entity
+public class Message {
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "expediteur_id")
+    private Utilisateur expediteur;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "destinataire_id")
+    private Utilisateur destinataire;
+}
+```
+
+Remarquez qu'il n'y a **pas** d'entité « Conversation ». La conversation entre A et B, c'est simplement l'ensemble des messages où (expéditeur = A et destinataire = B) ou l'inverse. Une table de moins, et aucune information dupliquée à maintenir cohérente.
+
+### `@JsonIgnore` : ce qui ne doit pas sortir du serveur
+
+Une entité JPA sert deux maîtres : elle décrit une table, et elle est sérialisée en JSON. Ces deux rôles n'ont pas les mêmes besoins, et `@JsonIgnore` règle l'écart.
+
+Deux motifs bien distincts de l'utiliser :
+
+| Motif | Exemple |
+|---|---|
+| **Ne jamais divulguer** | Le mot de passe haché. Sans l'annotation, il partirait dans chaque réponse où un utilisateur apparaît — y compris un simple fil de discussion |
+| **Éviter une récursion infinie** | Si `Contact` sérialise son propriétaire et que `Utilisateur` sérialisait ses contacts, Jackson tournerait en boucle jusqu'au plantage |
+
+Le second motif se règle aussi en **ne déclarant pas** la collection inverse. C'est le choix fait ici : `Utilisateur` n'a pas de champ `List<Contact>` — le repository interroge par identifiant du propriétaire quand il en a besoin. Moins de code, aucun piège de sérialisation, et pas de collection chargée pour rien.
+
+### Requêtes dérivées : Spring Data lit les noms de méthodes
+
+On l'utilisait déjà sans le nommer. Le principe : Spring Data **analyse le nom** de la méthode d'interface et en écrit le SQL. Aucune implémentation à fournir.
+
+```java
+public interface ContactRepository extends JpaRepository<Contact, Long> {
+
+    // WHERE proprietaire_id = ? ORDER BY nom ASC
+    List<Contact> findByProprietaireIdOrderByNomAsc(Long proprietaireId);
+
+    // WHERE id = ? AND proprietaire_id = ?
+    Optional<Contact> findByIdAndProprietaireId(Long id, Long proprietaireId);
+}
+```
+
+| Fragment du nom | Traduction SQL |
+|---|---|
+| `findBy…` / `existsBy…` / `countBy…` | `SELECT` / `SELECT EXISTS` / `SELECT COUNT` |
+| `…And…` / `…Or…` | `AND` / `OR` |
+| `…Not` | `<>` |
+| `…True` / `…False` | `= true` / `= false` |
+| `…OrderByChampAsc` | `ORDER BY champ ASC` |
+| Chemin composé (`ProprietaireId`) | Traverse la relation : `proprietaire.id` |
+
+`Optional<T>` plutôt que `null` : le type **dit** que le résultat peut être absent, et le compilateur force à traiter ce cas au lieu de laisser filer une erreur à l'exécution.
+
+### `@Query` : quand le nom deviendrait illisible
+
+La dérivation a une limite. Pour « les messages entre A et B, dans un sens ou dans l'autre », le nom dérivé serait `findByExpediteurIdAndDestinataireIdOrDestinataireIdAndExpediteurIdOrderByDateEnvoiAsc` — impossible à relire, et ambigu sur la priorité du `Or`.
+
+`@Query` permet d'écrire la requête à la main, en **JPQL** : le même langage que SQL, mais qui parle d'*entités* et de leurs champs Java (`Message`, `m.expediteur.id`) au lieu de tables et de colonnes.
+
+```java
+@Query("""
+        SELECT m FROM Message m
+        WHERE (m.expediteur.id = :moi AND m.destinataire.id = :autre)
+           OR (m.expediteur.id = :autre AND m.destinataire.id = :moi)
+        ORDER BY m.dateEnvoi ASC
+        """)
+List<Message> conversation(@Param("moi") Long moi, @Param("autre") Long autre);
+```
+
+`:moi` et `:autre` sont des **paramètres nommés**, associés par `@Param`. Ils sont transmis séparément de la requête, ce qui exclut par construction toute injection SQL — on ne concatène jamais une valeur dans une requête.
+
+Le `"""…"""` est un *text block* Java : une chaîne sur plusieurs lignes, sans concaténation ni `\n`.
+
+### Les `record` : des classes de données en une ligne
+
+Un `record` est une classe **immuable** dont le compilateur génère le constructeur, les accesseurs, `equals()`, `hashCode()` et `toString()`.
+
+```java
+public record DemandeInscription(String email, String motDePasse, String nomAffichage) {}
+public record ReponseAuth(String jeton, Utilisateur utilisateur) {}
+```
+
+Les accesseurs portent le nom du champ, **sans** préfixe `get` : `demande.email()`, pas `demande.getEmail()`.
+
+Pourquoi ne pas recevoir directement l'entité ? Parce qu'une requête d'inscription **n'est pas** un utilisateur : elle contient un mot de passe en clair, qui n'existe nulle part dans l'entité. Des types distincts pour des choses distinctes — c'est ce qu'on appelle un DTO (*Data Transfer Object*), et un record en est la forme la plus économique.
+
+### `Instant` : horodater sans ambiguïté
+
+```java
+private Instant dateEnvoi;   // rempli par Instant.now()
+```
+
+`Instant` est un point précis dans le temps, en UTC, sans fuseau horaire. C'est le type juste pour un horodatage technique : la conversion vers l'heure locale de l'utilisateur est l'affaire de l'affichage, pas du stockage.
+
+Côté client, Jackson le sérialise en chaîne ISO 8601 (`"2026-09-10T14:25:45.990Z"`) : en TypeScript c'est donc un `string`, converti en `Date` seulement au moment de l'afficher.
+
+### Dans le projet
+
+**Entités** — [`model/Utilisateur.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Utilisateur.java), [`model/Contact.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Contact.java), [`model/Message.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Message.java)
+
+```java
+// Utilisateur.java — "user" est un mot réservé en SQL : la table serait
+// refusée par H2 sans ce renommage explicite.
+@Entity
+@Table(name = "utilisateur")
+public class Utilisateur {
+
+    @Column(nullable = false, unique = true)
+    private String email;
+
+    // Ce champ ne sort JAMAIS du serveur.
+    @JsonIgnore
+    @Column(nullable = false)
+    private String motDePasse;
+}
+```
+
+**Repositories** — [`repository/MessageRepository.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/MessageRepository.java), [`repository/UtilisateurRepository.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/UtilisateurRepository.java)
+
+```java
+// Tous les comptes sauf le sien : "Not" devient WHERE id <> ?
+List<Utilisateur> findByIdNotOrderByNomAffichageAsc(Long id);
+
+// Les messages reçus non lus, pour la pastille de notification
+List<Message> findByDestinataireIdAndLuFalse(Long destinataireId);
+```
+
+## 20. Composants réutilisables : `input()` et boucles de configuration
+
+### Le problème : six fois le même bloc
+
+Six réseaux sociaux à saisir, puis à afficher avec leur logo. Écrit naïvement, cela donne six champs de formulaire quasi identiques, six `@if` dans le gabarit d'affichage, et six blocs à modifier chaque fois qu'on ajoute un réseau.
+
+La solution tient en un principe : **décrire la variabilité comme une donnée**, puis boucler dessus.
+
+```typescript
+// Une seule source de vérité pour la liste
+export const RESEAUX = [
+  { cle: 'instagram', nom: 'Instagram', couleur: '#E1306C' },
+  { cle: 'linkedin', nom: 'LinkedIn', couleur: '#0A66C2' }
+] as const;
+
+// Le type « une des clés » : 'instagram' | 'linkedin'. Déduit du tableau,
+// donc toujours à jour — impossible d'oublier de le mettre à jour.
+export type CleReseau = typeof RESEAUX[number]['cle'];
+```
+
+`as const` demande à TypeScript de traiter le tableau comme figé : il en déduit alors les valeurs exactes (`'instagram'`) au lieu du vague `string`.
+
+Ajouter un septième réseau devient **une ligne** dans ce tableau, plus un `@case` pour son logo.
+
+### `input()` : recevoir une donnée du parent
+
+`input()` est le pendant de `output()` (section 8) : la donnée descend du parent vers l'enfant, là où `output()` la fait remonter.
+
+Un `input()` est un **signal en lecture seule** : il se lit avec des parenthèses, et tout `computed()` qui en dépend se recalcule quand le parent passe une nouvelle valeur.
+
+```typescript
+@Component({ selector: 'app-fiche', /* … */ })
+export class Fiche {
+  // .required : le composant ne peut pas être utilisé sans lui fournir la
+  // valeur, et TypeScript le sait — pas de « | undefined » à gérer partout.
+  element = input.required<MonType>();
+
+  // Optionnel, avec valeur par défaut
+  compact = input(false);
+
+  // Dérivé de l'entrée : recalculé quand le parent change la valeur
+  titre = computed(() => this.element().nom.toUpperCase());
+}
+```
+
+```html
+<!-- Côté parent : la même syntaxe de binding que n'importe quel attribut -->
+<app-fiche [element]="contact" [compact]="true" />
+```
+
+### `@switch` dans un gabarit
+
+L'équivalent du `switch`/`case` de TypeScript, côté template. Utile quand une même position doit accueillir un contenu différent selon une valeur.
+
+```html
+@switch (type()) {
+  @case ('a') { <p>Contenu A</p> }
+  @case ('b') { <p>Contenu B</p> }
+  @default { <p>Autre</p> }
+}
+```
+
+### Champs de formulaire générés par boucle
+
+`formControlName` accepte une valeur dynamique entre crochets, ce qui permet de générer les champs depuis la liste de configuration.
+
+```html
+@for (reseau of reseaux; track reseau.cle) {
+  <div>
+    <label [for]="reseau.cle">{{ reseau.nom }}</label>
+    <input [id]="reseau.cle" [formControlName]="reseau.cle" />
+  </div>
+}
+```
+
+Le `FormGroup` doit bien sûr contenir un contrôle par clé — c'est le seul endroit où la liste reste écrite en dur.
+
+### SVG en ligne plutôt qu'images
+
+Les logos sont des `<svg>` écrits directement dans le gabarit, pas des fichiers téléchargés. Trois raisons :
+
+| Avantage | Détail |
+|---|---|
+| Aucune requête réseau | Le logo arrive avec le HTML, pas en dix requêtes supplémentaires |
+| Aucune dépendance externe | Rien à charger depuis un site tiers qui pourrait tomber ou pister l'utilisateur |
+| Colorable en CSS | `fill: currentColor` fait prendre au tracé la couleur du texte — impossible avec un PNG |
+
+```css
+.icone svg {
+  width: 1.15rem;
+  fill: currentColor;   /* le SVG suit la couleur du texte */
+}
+```
+
+### Piloter une variable CSS depuis le composant
+
+Chaque réseau a sa couleur de marque. Plutôt que six règles CSS presque identiques, on passe la couleur en **variable CSS** depuis le TypeScript.
+
+```html
+<a [style.--couleur-marque]="element.couleur">…</a>
+```
+
+```css
+.lien {
+  /* Avec une valeur de repli, au cas où la variable ne serait pas fournie */
+  background: var(--couleur-marque, var(--bleu));
+}
+```
+
+### Dans le projet
+
+**Modèle** — [`contact.model.ts`](../carnet-contact_frontend/src/app/contact.model.ts) porte la constante `RESEAUX` et le type `CleReseau`.
+
+**Composant** — [`components/reseaux-sociaux/reseaux-sociaux.ts`](../carnet-contact_frontend/src/app/components/reseaux-sociaux/reseaux-sociaux.ts) et son [gabarit](../carnet-contact_frontend/src/app/components/reseaux-sociaux/reseaux-sociaux.html)
+
+```typescript
+contact = input.required<Contact>();
+
+// Ne garde que les réseaux renseignés : le gabarit n'a plus aucun @if à faire.
+liens = computed<LienReseau[]>(() => {
+  const c = this.contact();
+  return RESEAUX
+    .map(r => ({ ...r, url: this.versUrl(c[r.cle], r.cle) }))
+    .filter(lien => lien.url !== '');
+});
+```
+
+Le composant accepte aussi bien une URL complète qu'un pseudo, et reconstruit l'adresse dans le second cas — sans quoi un pseudo seul produirait un lien relatif cassé.
+
+**Formulaires** — [`contact-form.html`](../carnet-contact_frontend/src/app/components/contact-form/contact-form.html) et [`contact-edit.html`](../carnet-contact_frontend/src/app/pages/contact-edit/contact-edit.html) génèrent leurs six champs par `@for`.
+
+## 21. Mise en forme : variables CSS et cohérence visuelle
+
+### Le problème : des couleurs éparpillées
+
+Écrire `#0b5fff` dans quinze fichiers CSS fonctionne — jusqu'au jour où il faut changer la teinte. Il faut alors les retrouver toutes, sans en oublier une, et sans modifier par erreur un bleu qui n'était pas celui-là.
+
+Les **variables CSS** (ou *custom properties*) règlent cela : on déclare chaque couleur une fois, sur `:root` (la racine du document), et on la référence partout par `var(--nom)`.
+
+```css
+:root {
+  --bleu: #0b5fff;
+  --bleu-fonce: #0740b5;
+  --rouge: #ff1f3d;
+
+  --rayon: 12px;
+  --ombre: 0 1px 2px rgb(19 28 43 / 0.06), 0 4px 12px rgb(19 28 43 / 0.05);
+}
+
+.bouton {
+  background: var(--bleu);
+  border-radius: var(--rayon);
+}
+```
+
+Elles ne servent pas qu'aux couleurs : rayons d'arrondi, ombres, largeur maximale du contenu. Tout ce qui doit rester **cohérent** d'un écran à l'autre gagne à être nommé une fois.
+
+À la différence d'une variable de préprocesseur (Sass), une variable CSS existe dans le navigateur à l'exécution : elle est lisible par le JavaScript, surchargeable sur un élément précis (voir section 20), et modifiable à chaud.
+
+### Choisir un rôle par couleur, pas juste une teinte
+
+Deux couleurs vives se neutralisent si on les emploie au hasard. Le principe qui les rend lisibles : **une couleur, un rôle**.
+
+| Couleur | Rôle | Où elle apparaît |
+|---|---|---|
+| Bleu | Action **courante**, navigation, identité | Boutons de validation, liens, en-tête, liserés de cartes |
+| Rouge | Action **destructrice** et alerte | Bouton Supprimer, déconnexion, bannière d'erreur |
+| Gris | Structure et texte secondaire | Bordures, libellés, informations de second plan |
+
+Un rouge partout ne veut plus rien dire ; un rouge **rare** se remarque. C'est ce qui permet à l'œil de repérer le bouton dangereux sans le lire.
+
+### Rendre les états visibles
+
+Un état d'interface qui n'est pas visible n'existe pas pour l'utilisateur. Trois cas méritent une règle explicite :
+
+```css
+/* Bouton désactivé : c'est lui qui explique pourquoi un clic ne fait rien
+   pendant une requête (section 16). Sans style distinct, l'utilisateur croit
+   à un bug. */
+button:disabled {
+  background: #b9c3d4;
+  cursor: not-allowed;
+}
+
+/* Focus clavier : ne JAMAIS supprimer un contour de focus sans le remplacer,
+   sous peine de rendre le site inutilisable sans souris. */
+input:focus {
+  outline: none;
+  border-color: var(--bleu);
+  box-shadow: 0 0 0 3px rgb(11 95 255 / 0.15);
+}
+```
+
+### Grilles qui s'adaptent sans média-requête
+
+`auto-fit` associé à `minmax()` produit une grille qui se réorganise seule : autant de colonnes que la largeur le permet, chacune d'au moins 220 px.
+
+```css
+.grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+```
+
+Aucun `@media` n'est nécessaire pour ce cas : sur téléphone, la grille tombe naturellement à une colonne.
+
+### Bouton ou lien ?
+
+La distinction n'est pas décorative, elle est **fonctionnelle** :
+
+| Balise | Quand | Conséquence |
+|---|---|---|
+| `<a>` | L'élément **navigue** vers une URL | Clic droit, ouvrir dans un onglet, copier l'adresse fonctionnent |
+| `<button>` | L'élément **déclenche une action** | Activable à la barre d'espace, annoncé comme bouton aux lecteurs d'écran |
+
+On peut styler l'un comme l'autre, mais il faut choisir la balise selon le comportement, pas selon l'apparence voulue.
+
+### Dans le projet
+
+**Système global** — [`src/styles.css`](../carnet-contact_frontend/src/styles.css) déclare toutes les variables et les styles de base des boutons, champs et cartes (`.carte`, `.grille`, `.pastille`).
+
+**En-tête** — [`app.css`](../carnet-contact_frontend/src/app/app.css)
+
+```css
+.entete {
+  /* Les deux couleurs de l'application : le bleu domine largement,
+     le rouge n'apparaît qu'en fin de course. */
+  background: linear-gradient(100deg, var(--bleu-fonce) 0%, var(--bleu) 55%, var(--rouge) 160%);
+}
+
+/* Classe posée automatiquement par routerLinkActive sur le lien courant */
+.entete nav a.actif {
+  color: var(--bleu-fonce);
+  background: #fff;
+}
+```
+
+`routerLinkActive` ajoute une classe au lien de la route active : c'est Angular qui suit la navigation, aucun état « onglet courant » n'est à gérer à la main.
+
+**Fil de discussion** — [`pages/messages/messages.css`](../carnet-contact_frontend/src/app/pages/messages/messages.css)
+
+```css
+/* Bulle reçue : à gauche, en gris. */
+.bulle { align-self: flex-start; background: #eef1f7; }
+
+/* Bulle envoyée : à droite, en bleu pétant. Le côté et la couleur sont le
+   seul indice qui permet de suivre un dialogue. */
+.bulle.de-moi { align-self: flex-end; color: #fff; background: var(--bleu); }
+```
+
+## 22. Backend Spring Boot
 
 Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
 
@@ -2235,7 +2999,7 @@ Le principe est exactement le même que l'injection de dépendances vue côté A
 
 ---
 
-## 19. Git et GitHub
+## 23. Git et GitHub
 
 Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
 
@@ -2292,7 +3056,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 
 ---
 
-## 20. Pense-bête de dépannage
+## 24. Pense-bête de dépannage
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
@@ -2316,12 +3080,12 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Une liste ne se met pas à jour après un ajout ou une suppression faits par un autre composant | Chaque composant possède sa propre copie de la donnée dans un signal local | Déplacer la donnée dans le service (signal partagé, voir section 12) plutôt que de recharger la page |
 | Le formulaire d'édition reste vide alors que la fiche s'affiche bien | Formulaire pré-rempli à la construction, avant l'arrivée des données du signal partagé | Pré-remplir dans un `effect()` qui réagit au signal, pas dans le `constructor` directement (section 14) |
 | Le formulaire d'édition efface la saisie en cours de temps en temps | Un `effect()` de pré-remplissage se réexécute à chaque changement du signal (ex : rechargement de la liste) | Ajouter un drapeau booléen : ne `patchValue()` qu'une seule fois |
-| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 18) ; regarder la ligne `preflight` dans l'onglet Réseau |
+| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 22) ; regarder la ligne `preflight` dans l'onglet Réseau |
 | Modification enregistrée côté serveur mais la fiche affiche encore l'ancienne valeur | Le signal partagé n'a pas été mis à jour après le `PUT` | Dans le service, `.update()` avec `.map()` pour remplacer l'élément modifié par la réponse du serveur |
 | `NG0203` / `inject() must be called from an injection context` sur un `effect()` | `effect()` appelé hors constructeur / hors champ de classe | Le déplacer dans le `constructor` du composant |
 | Backend éteint ou en erreur : liste vide, formulaire sans réaction, aucun message | `.subscribe()` n'a qu'un callback de succès, l'erreur du flux n'est traitée nulle part | `.pipe(catchError(...))` dans le service + un signal d'erreur affiché (section 15) |
 | `catchError` provoque `Type 'void' is not assignable to type 'ObservableInput<...>'` | Le callback de `catchError` ne retourne pas d'Observable | Retourner `of(valeurDeRepli)`, `EMPTY`, ou `throwError(() => err)` |
-| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 18) |
+| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 22) |
 | Une modification du code (nouveau signal, `delay()` ajouté...) reste sans effet dans le navigateur | Le rechargement à chaud de `ng serve` n'a pas pris (fréquent sous Windows / avec le SSR) | `Ctrl + C` sur `ng serve`, `npm start`, attendre `bundle generation complete`, puis `Ctrl + Shift + R` dans le navigateur |
 | L'indicateur de chargement ne s'affiche jamais au rafraîchissement de la page | Le `GET` initial part côté serveur (SSR) : `chargement` passe à `true` puis `false` avant l'envoi du HTML | Normal ; l'indicateur n'apparaît que sur les requêtes déclenchées par un clic (ajout, modif, suppression), section 16 |
 | L'indicateur de chargement reste allumé après une erreur réseau | `set(false)` placé seulement dans `.subscribe(next)`, qui ne s'exécute pas en cas d'erreur | Le mettre dans `finalize()` du `.pipe()`, qui s'exécute quelle que soit l'issue (section 16) |
@@ -2332,3 +3096,17 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | `req.url = ...` ou `req.headers.set(...)` dans un intercepteur reste sans effet | Un `HttpRequest` est immuable par conception | Passer par `req.clone({ url: ..., setHeaders: ... })` et transmettre la **copie** à `next()` (section 17) |
 | `404` sur toutes les requêtes après passage aux URL relatives | L'intercepteur de base URL ne reconnaît pas le préfixe, ou n'est pas placé en premier dans `withInterceptors` | Vérifier le test `req.url.startsWith('/api')` et l'ordre du tableau (section 17) |
 | `NG0203` / `inject() must be called from an injection context` dans un intercepteur | `inject()` appelé à l'intérieur d'un callback (`catchError`, `finalize`) au lieu du corps de la fonction | Appeler `inject()` en tête de l'intercepteur et garder la référence dans une `const` |
+| Au démarrage du backend : `Using generated security password: ...` | Comportement par défaut dès que `spring-boot-starter-security` est présent, sans `UserDetailsService` déclaré | Sans conséquence si l'authentification passe par un filtre JWT ; pour supprimer le message, exclure `UserDetailsServiceAutoConfiguration` (section 18) |
+| Toutes les requêtes renvoient 401/403 alors que le jeton semble correct | `@CrossOrigin` laissé sur le contrôleur : le CORS doit être géré par Spring Security une fois celui-ci en place | Retirer les `@CrossOrigin` et déclarer un `CorsConfigurationSource` dans `SecurityConfig` (section 18) |
+| L'en-tête `Authorization` n'arrive pas au backend | Configuration CORS qui n'autorise pas cet en-tête | `config.setAllowedHeaders(List.of("*"))` dans la configuration CORS |
+| Une requête sans jeton renvoie 403 au lieu de 401 | Aucun `AuthenticationEntryPoint` : Spring Security utilise `Http403ForbiddenEntryPoint` par défaut | Déclarer un point d'entrée qui répond 401 dans `.exceptionHandling(...)` (section 18) |
+| Un `ResponseStatusException(NOT_FOUND)` ressort en 403 | La requête est réacheminée vers `/error`, et `OncePerRequestFilter` ne rejoue pas le filtre JWT sur ce redispatch : l'identité est perdue | Ajouter `.requestMatchers("/error").permitAll()` (section 18) |
+| Mot de passe erroné sur la page de connexion : redirection en boucle vers la connexion | L'intercepteur réagit au 401 sans vérifier qu'un jeton existait — or un échec de connexion renvoie aussi 401 | Conditionner la déconnexion automatique à `session.jetonActuel() !== null` (section 18) |
+| `localStorage is not defined` au démarrage | Accès à `localStorage` pendant le rendu côté serveur (SSR), où il n'existe pas | Encadrer par `isPlatformBrowser(inject(PLATFORM_ID))` (section 18) |
+| Les pages protégées affichent le formulaire de connexion même une fois connecté | Routes prérendues alors que la garde dépend de `localStorage`, absent au build | Passer ces routes en `RenderMode.Client` dans `app.routes.server.ts` (section 18) |
+| `Table "USER" not found` ou erreur de syntaxe SQL sur une entité `User` | `user` est un mot réservé en SQL | Renommer la table : `@Table(name = "utilisateur")` (section 19) |
+| Le mot de passe haché apparaît dans une réponse JSON | Le champ est sérialisé par Jackson comme n'importe quel autre | `@JsonIgnore` sur le champ (section 19) |
+| Récursion infinie / `StackOverflowError` à la sérialisation JSON | Deux entités qui se référencent mutuellement, chacune sérialisant l'autre | `@JsonIgnore` sur la référence inverse, ou ne pas déclarer la collection inverse (section 19) |
+| `Repeated column in mapping for entity` sur une entité à deux relations vers le même type | Les deux `@ManyToOne` visent la même colonne par défaut | Nommer chaque colonne : `@JoinColumn(name = "expediteur_id")` (section 19) |
+| `null` s'affiche littéralement dans un champ de formulaire pré-rempli | Le backend renvoie `null` pour un champ optionnel, alors qu'un contrôle attend une chaîne | Convertir au `patchValue()` : `c.emailPro ?? ''` (section 19) |
+| Les logos de réseaux sociaux restent noirs malgré la couleur CSS | Le tracé SVG a une couleur figée dans l'attribut `fill` | Utiliser `fill: currentColor` en CSS et ne pas fixer `fill` dans le SVG (section 20) |
