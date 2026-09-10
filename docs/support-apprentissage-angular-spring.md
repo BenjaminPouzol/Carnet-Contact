@@ -18,9 +18,10 @@ Document de référence détaillé, organisé par notion. Chaque section combine
 10. [HttpClient et Observables](#10-httpclient-et-observables)
 11. [Cycle de vie d'un composant](#11-cycle-de-vie-dun-composant)
 12. [Signal partagé alimenté par HttpClient](#12-signal-partagé-alimenté-par-httpclient)
-13. [Backend Spring Boot](#13-backend-spring-boot)
-14. [Git et GitHub](#14-git-et-github)
-15. [Pense-bête de dépannage](#15-pense-bête-de-dépannage)
+13. [Routing Angular](#13-routing-angular)
+14. [Backend Spring Boot](#14-backend-spring-boot)
+15. [Git et GitHub](#15-git-et-github)
+16. [Pense-bête de dépannage](#16-pense-bête-de-dépannage)
 
 ---
 
@@ -182,6 +183,42 @@ listeSignal().push(nouvelElement);
 ```
 
 Cette règle de l'immutabilité (ne jamais modifier un tableau ou un objet "en place", mais toujours en recréer une nouvelle version) découle directement de la façon dont Angular détecte les changements : il compare les **références** des objets, pas leur contenu en détail. Si l'on modifie un tableau directement avec `.push()`, la référence du tableau reste exactement la même en mémoire — Angular, en comparant l'ancienne et la nouvelle référence, ne verra aucune différence et risque de ne pas déclencher la mise à jour de l'affichage, même si le contenu a réellement changé. En utilisant le spread operator (`...`) pour créer un tout nouveau tableau à chaque modification, on garantit que la référence change également, ce qui permet à Angular de détecter fiablement le changement.
+
+### Valeurs dérivées : `computed()`
+
+Il arrive souvent qu'une valeur affichée ne soit pas stockée telle quelle, mais se déduise d'autres données : un total qui dépend d'une liste, un élément qu'on retrouve dans un tableau à partir d'un identifiant, un libellé qui change selon un état. Écrire cette déduction « à la main » obligerait à la recalculer soi-même à chaque endroit où l'une des données sources change — et à ne jamais en oublier un.
+
+`computed()` répond à ce besoin : il crée un signal en **lecture seule** dont la valeur est le résultat d'un calcul, et Angular réexécute ce calcul automatiquement dès que l'un des signals lus à l'intérieur change. On ne l'écrit jamais avec `.set()` ni `.update()` — sa valeur n'est jamais imposée, seulement déduite.
+
+```typescript
+import { signal, computed } from '@angular/core';
+
+const prix = signal(100);
+const quantite = signal(2);
+
+// Le calcul lit prix() et quantite() : computed() « retient » cette
+// dépendance et se recalcule si l'un des deux change.
+const total = computed(() => prix() * quantite());
+
+console.log(total());   // 200
+quantite.set(3);
+console.log(total());   // 300 — recalculé tout seul, sans intervention
+```
+
+Un cas d'usage fréquent : retrouver un élément précis dans une liste qui, elle, est chargée de façon asynchrone (réponse d'un serveur). Au premier affichage la liste est encore vide, donc la recherche ne renvoie rien ; quand la réponse arrive et remplit le signal de la liste, le `computed()` se recalcule et trouve enfin l'élément — sans qu'aucun `.subscribe()` ni code de synchronisation n'ait été écrit.
+
+```typescript
+// items() est un signal alimenté plus tard par un appel HTTP
+elementCourant = computed(() =>
+  this.service.items().find(item => item.id === this.idRecherche)
+);
+```
+
+| | `signal()` | `computed()` |
+|---|---|---|
+| Contient | Une valeur qu'on fixe soi-même | Une valeur déduite d'autres signals |
+| Se modifie | `.set()`, `.update()` | Jamais directement — recalcul automatique |
+| Rôle | Source de vérité | Vue dérivée d'une ou plusieurs sources |
 
 ---
 
@@ -726,7 +763,176 @@ Ce dernier point est le meilleur indicateur de réussite du pattern. Un composan
 
 ---
 
-## 13. Backend Spring Boot
+## 13. Routing Angular
+
+### Le problème résolu
+
+Une application à écran unique fonctionne, mais l'URL du navigateur y reste figée : elle n'indique jamais *où* l'on se trouve dans l'application. Cela ferme trois portes concrètes. Impossible d'afficher un seul élément en pleine page sans le reste autour. Impossible de partager ou de mettre en favori un état précis de l'application, puisqu'il n'a pas d'adresse. Et le bouton « Retour » du navigateur devient inutilisable, faute d'historique de navigation interne.
+
+Le routing établit une correspondance entre **une URL et un composant à afficher**. L'URL cesse d'être décorative : elle devient une partie de l'état de l'application, lisible et modifiable par l'utilisateur. Tout cela sans jamais recharger la page — le navigateur ne redemande rien au serveur, c'est le routeur qui remplace le contenu affiché.
+
+### Mise en place
+
+`provideRouter(routes)` s'ajoute une seule fois dans `app.config.ts`, aux côtés des autres providers. La constante `routes` est un tableau qui associe chaque chemin à un composant.
+
+```typescript
+// app.routes.ts
+import { Routes } from '@angular/router';
+import { Accueil } from './pages/accueil/accueil';
+import { Detail } from './pages/detail/detail';
+
+export const routes: Routes = [
+  // Chemin vide = la racine du site (http://localhost:4200/).
+  // pathMatch: 'full' : ne correspondre QUE si l'URL est entièrement vide
+  // (sans lui, '' correspond par simple préfixe, donc à presque tout).
+  { path: '', component: Accueil, pathMatch: 'full' },
+
+  // ':id' est un SEGMENT VARIABLE : il capture n'importe quelle valeur
+  // rencontrée à cette position et la range sous le nom "id".
+  // /element/5, /element/42... correspondent tous à cette route.
+  { path: 'element/:id', component: Detail },
+];
+```
+
+Les chemins s'écrivent **sans barre oblique initiale** : `path: ''`, `path: 'element/:id'`, jamais `path: '/'`. La barre est implicite.
+
+### `<router-outlet />` — l'emplacement d'insertion
+
+Le composant racine cesse d'afficher directement du contenu : il devient une **coquille** qui ne contient que ce qui est commun à toutes les pages (un titre, un menu de navigation), plus un `<router-outlet />`. C'est à cet endroit précis que le routeur insère le composant correspondant à l'URL courante.
+
+```html
+<!-- app.html -->
+<h1>Mon application</h1>
+<nav><!-- liens de navigation communs --></nav>
+
+<!-- Le composant de la page active s'insère ici. -->
+<router-outlet />
+```
+
+```typescript
+// app.ts — importe RouterOutlet, ne connaît plus aucune donnée métier
+import { Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
+
+@Component({
+  selector: 'app-root',
+  imports: [RouterOutlet],
+  templateUrl: './app.html',
+})
+export class App {}
+```
+
+Une distinction d'organisation utile en découle : les composants associés à une URL se rangent dans un dossier `pages/`, tandis que `components/` garde les briques réutilisables insérées *à l'intérieur* d'une page. Un composant de liste n'est pas une page ; la page qui l'affiche en est une.
+
+### Naviguer : `routerLink` plutôt que `href`
+
+Écrire `<a href="/element/5">` serait une erreur de fond. Un `href` classique demande au navigateur d'aller chercher une nouvelle page auprès du serveur : il détruit l'application en cours, la retélécharge et la redémarre entièrement. Tous les services sont recréés, leurs signals repartent vides, les appels réseau sont à refaire.
+
+`routerLink` intercepte le clic, change l'URL affichée sans rien recharger, et demande au routeur de remplacer le contenu du `<router-outlet />`. L'application reste vivante, les services gardent leur instance et leurs données.
+
+```html
+<!-- Forme statique : l'URL est connue à l'écriture -->
+<a routerLink="/">Accueil</a>
+
+<!-- Forme dynamique : binding de propriété, l'URL est construite à partir
+     d'un tableau de segments. ['/element', 5] produit /element/5 -->
+<a [routerLink]="['/element', element.id]">{{ element.nom }}</a>
+```
+
+Dans les deux cas, il faut ajouter `RouterLink` aux `imports` du composant qui utilise la directive.
+
+| Élément | Rôle |
+|---|---|
+| `provideRouter(routes)` | Active le routeur pour toute l'application (dans `app.config.ts`) |
+| `Routes` | Type du tableau associant chemins et composants |
+| `path: ''` | Chemin racine ; `pathMatch: 'full'` pour une correspondance exacte |
+| `path: 'x/:id'` | Segment variable `:id`, capturé pour être relu dans le composant |
+| `<router-outlet />` | Emplacement où le composant de la route active est inséré |
+| `routerLink="/x"` | Lien de navigation interne, sans rechargement de page |
+| `[routerLink]="['/x', v]"` | Même chose, URL construite à partir de segments dynamiques |
+
+### Lire un paramètre d'URL : `ActivatedRoute`
+
+Le routeur capture la valeur du segment `:id`, mais elle ne se retrouve pas d'elle-même dans la classe du composant. `ActivatedRoute` est un service — on l'injecte comme n'importe quel autre — dont le rôle est de représenter la route actuellement active et de donner accès à ses paramètres.
+
+```typescript
+import { Component, inject } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+
+export class Detail {
+  private route = inject(ActivatedRoute);
+
+  // .snapshot : une PHOTO figée de la route au moment de la création du
+  // composant. paramMap.get('id') renvoie toujours une chaîne (une URL
+  // n'a pas de type) — d'où la conversion si on attend un nombre.
+  private id = Number(this.route.snapshot.paramMap.get('id'));
+}
+```
+
+Le `.snapshot` suffit tant qu'aucun lien ne mène **directement** d'une page paramétrée à une autre page de la même route (par exemple d'un `/element/5` vers un `/element/6`). Dans ce cas particulier, Angular réutilise l'instance du composant au lieu de la recréer, et le `.snapshot` — lu une seule fois — ne se met pas à jour. Pour gérer ce cas, on lit `route.paramMap` sous forme d'Observable et on s'y abonne ; tant qu'il ne se présente pas, le `.snapshot` reste la solution la plus simple.
+
+### Afficher la donnée : `ActivatedRoute` + signal partagé + `computed()`
+
+Une page de détail combine naturellement les trois notions : l'id vient de l'URL (`ActivatedRoute`), les données viennent du service (signal partagé, section 12), et la fiche à afficher se déduit des deux (`computed()`, section 3).
+
+```typescript
+export class Detail implements OnInit {
+  private route = inject(ActivatedRoute);
+  private service = inject(MonService);
+
+  private id = Number(this.route.snapshot.paramMap.get('id'));
+
+  // Se recalcule seul quand items() change : si la liste est encore vide
+  // au premier affichage (réponse serveur en attente), element() vaut
+  // undefined, puis se remplit dès l'arrivée des données.
+  element = computed(() =>
+    this.service.items().find(item => item.id === this.id)
+  );
+
+  ngOnInit(): void {
+    // Nécessaire en cas d'accès direct à l'URL (lien partagé, F5) :
+    // le signal partagé serait alors vide, personne ne l'ayant rempli.
+    this.service.chargerItems();
+  }
+}
+```
+
+```html
+<!-- '; as e' capture le résultat de element() dans une variable locale e,
+     réutilisable dans tout le bloc, et évite de forcer le typage à
+     chaque ligne (element() pouvant valoir undefined). -->
+@if (element(); as e) {
+  <h2>{{ e.nom }}</h2>
+  <p>{{ e.description }}</p>
+} @else {
+  <p>Élément introuvable (ou en cours de chargement).</p>
+}
+
+<a routerLink="/">Retour</a>
+```
+
+### Routing et rendu côté serveur (SSR)
+
+Un projet généré avec le SSR activé possède un fichier `app.routes.server.ts` qui indique, pour chaque route, *comment* la page doit être produite. Par défaut, toutes les routes sont pré-générées au moment du `build` (`RenderMode.Prerender`) — excellent pour des pages au contenu fixe.
+
+Une route paramétrée comme `element/:id` pose problème : au moment du build, les identifiants n'existent pas encore (ils vivent en base, à l'exécution). Angular ne peut pas deviner quelles pages fabriquer. On déclare donc cette route en `RenderMode.Client` : le navigateur la construira lui-même.
+
+```typescript
+// app.routes.server.ts
+import { RenderMode, ServerRoute } from '@angular/ssr';
+
+export const serverRoutes: ServerRoute[] = [
+  // Les id n'existent qu'à l'exécution : pas de prérendu possible.
+  { path: 'element/:id', renderMode: RenderMode.Client },
+
+  // Toutes les autres routes restent pré-générées au build.
+  { path: '**', renderMode: RenderMode.Prerender },
+];
+```
+
+Sans cet ajustement, `ng build` échoue en réclamant la liste des identifiants à pré-générer.
+
+## 14. Backend Spring Boot
 
 Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
 
@@ -870,7 +1076,7 @@ Le principe est exactement le même que l'injection de dépendances vue côté A
 
 ---
 
-## 14. Git et GitHub
+## 15. Git et GitHub
 
 Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
 
@@ -927,7 +1133,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 
 ---
 
-## 15. Pense-bête de dépannage
+## 16. Pense-bête de dépannage
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
@@ -937,6 +1143,10 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Deux lignes apparaissent dans l'onglet Réseau pour une seule action (une `preflight` puis la vraie requête) | Comportement normal : le navigateur demande d'abord l'autorisation via `OPTIONS` | Rien à corriger — voir la sous-section sur la requête preflight |
 | Erreur CORS alors qu'un `System.out.println` dans le contrôleur n'affiche rien | Le `OPTIONS` préalable a échoué : la méthode Java n'est jamais appelée | Chercher du côté de `@CrossOrigin`, pas dans la logique du contrôleur |
 | `LF will be replaced by CRLF` à chaque `git add` sous Windows | Git convertit les fins de ligne entre le dépôt (LF) et le disque (CRLF) | Avertissement sans conséquence, aucune action nécessaire |
+| `NG04002` / `Cannot match any routes` dans la console | Aucune route ne correspond à l'URL demandée (faute de frappe, route non déclarée) | Vérifier le tableau `routes`, et écrire les `path` SANS barre oblique initiale (`''`, pas `'/'`) |
+| Un clic sur un `routerLink` recharge toute la page | Un `href` a été utilisé à la place, ou `RouterLink` absent des `imports` du composant | Utiliser `routerLink` / `[routerLink]` et l'ajouter aux `imports` |
+| `ng build` échoue en réclamant les paramètres d'une route `:id` à prérendre | Route paramétrée laissée en `RenderMode.Prerender` alors que les valeurs n'existent qu'à l'exécution | La passer en `RenderMode.Client` dans `app.routes.server.ts` |
+| La page de détail est vide au rafraîchissement (F5) alors qu'elle s'affiche via un clic | Accès direct à l'URL : le signal partagé n'a été rempli par personne | Appeler la méthode de chargement du service dans le `ngOnInit()` de la page de détail |
 | Les données ajoutées disparaissent après un redémarrage du backend | Base H2 configurée en mémoire (comportement normal avec la config par défaut) | Attendu pour l'instant ; pour la persistance réelle, configurer H2 en mode fichier ou changer de base de données |
 | Erreur TypeScript qui persiste alors que le code semble correct | Service de langage TypeScript désynchronisé | Palette de commandes → `TypeScript: Restart TS Server` |
 | `./mvnw : Le terme n'est pas reconnu...` sous PowerShell | Forme Unix de la commande, inadaptée à PowerShell | Utiliser `.\mvnw.cmd spring-boot:run` (antislash + extension `.cmd`) |

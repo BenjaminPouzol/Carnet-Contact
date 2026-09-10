@@ -103,13 +103,32 @@ marqué `[DÉFINITIF]` ou `[PROVISOIRE]`, pour distinguer à la relecture le
 pattern lui-même de l'échafaudage de transition. Cette convention est à
 reprendre pour les prochaines migrations progressives.
 
-## Ce qui était prévu ensuite (pas encore fait)
+### Partie 4 — Routing et page de détail d'un contact
+Objectif : donner une URL propre à chaque contact, pour l'afficher seul et
+rendre le bouton Retour du navigateur utilisable. Prolonge directement la
+Partie 3 : la page de détail lit le **même** signal partagé que la liste,
+sans une ligne de synchronisation.
 
-### Étape 12 du tutoriel original — Routing Angular
-Objectif pédagogique : apprendre `Routes`, `provideRouter`, `RouterOutlet`, 
-`routerLink`, et surtout `ActivatedRoute` pour récupérer un paramètre 
-dynamique dans l'URL (`/contact/:id`), en créant une page de détail d'un 
-contact.
+Trois notions neuves, découpées en étapes validées une à une :
+
+18. `App` devient une coquille (titre + `<router-outlet />`) ; le contenu de
+    la page d'accueil part dans un nouveau composant `pages/accueil`.
+    Première route `''` → `Accueil`. Distinction `pages/` (associées à une
+    URL) vs `components/` (briques réutilisables)
+19. Route `contact/:id` → `ContactDetail` ; les noms de la liste deviennent
+    des `[routerLink]="['/contact', id]"`. Pourquoi pas `href` : il recharge
+    tout et détruit le signal partagé
+20. `ContactDetail` lit l'id via `ActivatedRoute.snapshot`, puis retrouve le
+    contact avec `computed()` sur le signal partagé — recalcul automatique
+    quand la réponse HTTP arrive. Étapes 3 et 4 du plan fusionnées : un id
+    affiché seul aurait été un palier sans intérêt visible
+21. Contrainte SSR : la route paramétrée passe en `RenderMode.Client` dans
+    `app.routes.server.ts` (les id n'existent qu'à l'exécution)
+
+Support : `computed()` ajouté en sous-section de la section 3, et une
+section 13 « Routing Angular » complète.
+
+## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
 - Gestion d'erreurs propre sur les appels HTTP (`catchError` de RxJS)
