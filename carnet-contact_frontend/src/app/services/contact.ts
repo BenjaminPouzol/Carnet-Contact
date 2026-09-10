@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { EMPTY, of, catchError } from 'rxjs';
 import { Contact } from '../contact.model';
 
 @Injectable({
@@ -9,32 +10,53 @@ export class ContactService {
   private http = inject(HttpClient);
   private apiUrl = 'http://localhost:8080/api/contacts';
 
-  // La liste vit ICI, dans le service singleton : c'est la source de
-  // vérité côté client. Privée : seul le service a le droit de l'écrire.
+  // Source de vérité côté client : la liste des contacts.
   private contactsSignal = signal<Contact[]>([]);
-
-  // Version exposée aux composants : lisible, mais pas modifiable.
   readonly contacts = this.contactsSignal.asReadonly();
 
+  // Deuxième signal : le dernier message d'erreur, ou null si tout va bien.
+  // Un composant (ici App) l'affichera. null = pas d'erreur à montrer.
+  private erreurSignal = signal<string | null>(null);
+  readonly erreur = this.erreurSignal.asReadonly();
+
   chargerContacts(): void {
-    this.http.get<Contact[]>(this.apiUrl).subscribe(data => {
-      // .set() : on remplace toute la liste par celle du serveur.
-      this.contactsSignal.set(data);
-    });
+    this.erreurSignal.set(null); // on repart d'un état sain avant chaque appel
+
+    this.http.get<Contact[]>(this.apiUrl).pipe(
+      // catchError intercepte une erreur du flux (backend éteint, 500...).
+      // Il DOIT retourner un Observable : ici of([]), une liste vide de repli,
+      // pour que le .subscribe() reçoive quand même une valeur exploitable.
+      catchError(() => {
+        this.erreurSignal.set('Impossible de charger les contacts. Le serveur est-il démarré ?');
+        return of([]);
+      })
+    ).subscribe(data => this.contactsSignal.set(data));
   }
 
   addContact(contact: Contact): void {
-    this.http.post<Contact>(this.apiUrl, contact).subscribe(contactCree => {
-      // On ajoute la réponse du SERVEUR : elle porte l'id généré par la base.
+    this.erreurSignal.set(null);
+
+    this.http.post<Contact>(this.apiUrl, contact).pipe(
+      catchError(() => {
+        this.erreurSignal.set("Impossible d'ajouter le contact.");
+        // EMPTY : le flux se termine SANS émettre — le .subscribe() ne
+        // s'exécute pas, donc le signal des contacts n'est pas touché.
+        return EMPTY;
+      })
+    ).subscribe(contactCree => {
       this.contactsSignal.update(liste => [...liste, contactCree]);
     });
   }
 
   modifierContact(contact: Contact): void {
-    this.http.put<Contact>(`${this.apiUrl}/${contact.id}`, contact).subscribe(contactMaj => {
-      // .map() renvoie un NOUVEAU tableau (immutabilité) : le contact
-      // modifié est remplacé par la réponse du serveur, les autres
-      // restent inchangés.
+    this.erreurSignal.set(null);
+
+    this.http.put<Contact>(`${this.apiUrl}/${contact.id}`, contact).pipe(
+      catchError(() => {
+        this.erreurSignal.set('Impossible d\'enregistrer les modifications.');
+        return EMPTY;
+      })
+    ).subscribe(contactMaj => {
       this.contactsSignal.update(liste =>
         liste.map(c => (c.id === contactMaj.id ? contactMaj : c))
       );
@@ -42,10 +64,14 @@ export class ContactService {
   }
 
   deleteContact(id: number): void {
-    this.http.delete<void>(`${this.apiUrl}/${id}`).subscribe(() => {
-      // Mise à jour locale : inutile de redemander la liste au serveur,
-      // on sait déjà à quoi elle doit ressembler.
-      // .filter() renvoie un nouveau tableau (règle d'immutabilité).
+    this.erreurSignal.set(null);
+
+    this.http.delete<void>(`${this.apiUrl}/${id}`).pipe(
+      catchError(() => {
+        this.erreurSignal.set('Impossible de supprimer le contact.');
+        return EMPTY;
+      })
+    ).subscribe(() => {
       this.contactsSignal.update(liste => liste.filter(c => c.id !== id));
     });
   }
