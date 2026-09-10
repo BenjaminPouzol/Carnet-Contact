@@ -146,18 +146,17 @@ Notions ajoutées au support : `effect()` en sous-section de la section 3,
 sous-section de la section 13, et une **section 14 « Modification d'une
 ressource »** complète. Sections Backend/Git/Pense-bête renumérotées 15/16/17.
 
-À partir de cette partie, sur demande de l'utilisateur : chaque notion du
-support est suivie d'un encadré **« Dans le projet »** donnant le fichier réel
-et l'extrait de code correspondant (convention ajoutée à CLAUDE.md, à
-appliquer aussi rétroactivement quand on repasse sur une section). Fait pour
-les sections 12, 13 et 14 ; les sections 2 à 11 restent à compléter si
-l'utilisateur le souhaite.
+Sur demande de l'utilisateur : chaque notion du support est suivie d'un
+encadré **« Dans le projet »** donnant le fichier réel (lien Markdown relatif
+depuis `docs/`) et l'extrait de code correspondant, pour lire le support et le
+code source en parallèle. Convention ajoutée à CLAUDE.md. **Appliquée à tout
+le document** (sections 2 à 14) — 25 encadrés au total. À maintenir pour
+chaque nouvelle notion.
 
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
 - Gestion d'erreurs propre sur les appels HTTP (`catchError` de RxJS)
-- Compléter les encadrés « Dans le projet » dans les sections 2 à 11
 - Intercepteur HTTP
 - Pagination et recherche côté backend
 - Tests unitaires (fichiers `.spec.ts` déjà générés par le CLI, jamais 

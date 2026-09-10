@@ -126,6 +126,31 @@ ng generate component components/mon-composant
 
 Ces trois étapes sont indissociables. Oublier l'une d'elles est une source d'erreur très fréquente en début d'apprentissage : si tu utilises la balise dans le HTML sans avoir ajouté le composant aux `imports`, Angular affichera une erreur au moment de la compilation, car il ne "connaît" pas cette balise.
 
+**Dans le projet** — le composant racine [`app.ts`](../carnet-contact_frontend/src/app/app.ts), et un composant enfant typique [`components/contact-list/contact-list.ts`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.ts)
+
+```typescript
+// contact-list.ts — les trois fichiers ts / html / css, un selector, des imports
+@Component({
+  selector: 'app-contact-list',
+  imports: [RouterLink],
+  templateUrl: './contact-list.html',
+  styleUrl: './contact-list.css'
+})
+export class ContactList implements OnInit { /* ... */ }
+```
+
+L'arbre des composants du projet : `App` (coquille) → `Accueil` (page) → `ContactForm` + `ContactList` (briques). Les trois étapes « importer / déclarer dans `imports` / utiliser la balise » se lisent dans [`pages/accueil/accueil.ts`](../carnet-contact_frontend/src/app/pages/accueil/accueil.ts) et [`accueil.html`](../carnet-contact_frontend/src/app/pages/accueil/accueil.html) :
+
+```typescript
+// accueil.ts
+imports: [ContactList, ContactForm],
+```
+```html
+<!-- accueil.html -->
+<app-contact-form (contactAjoute)="ajouterContact($event)"></app-contact-form>
+<app-contact-list></app-contact-list>
+```
+
 ---
 
 ## 3. Signals
@@ -162,6 +187,20 @@ readonly monSignalPublic = monSignal.asReadonly();
 La distinction entre `.set()` et `.update()` correspond à deux besoins différents. `.set()` s'utilise quand on connaît déjà la nouvelle valeur complète et qu'on veut simplement l'imposer (par exemple, remplacer toute une liste par les résultats reçus d'un serveur). `.update()` s'utilise quand la nouvelle valeur dépend de l'ancienne — typiquement pour ajouter un élément à un tableau existant, ou incrémenter un compteur : on ne peut pas "deviner" la nouvelle valeur sans regarder l'ancienne d'abord.
 
 `.asReadonly()` répond à une préoccupation d'encapsulation : un service qui expose directement son signal modifiable permettrait à n'importe quel composant de le modifier n'importe comment, sans passer par une méthode contrôlée. En exposant une version en lecture seule, on force tous les composants extérieurs à passer par les méthodes définies explicitement par le service (comme `addContact()` ou `deleteContact()`), qui elles seules ont le droit de modifier la donnée réelle. Cela centralise la logique de modification à un seul endroit, plus facile à comprendre et à déboguer.
+
+**Dans le projet** — [`services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts)
+
+```typescript
+private contactsSignal = signal<Contact[]>([]);   // création, valeur initiale []
+readonly contacts = this.contactsSignal.asReadonly();
+
+// .set() : remplacer toute la liste (réponse du serveur)
+this.contactsSignal.set(data);
+// .update() : la nouvelle valeur dépend de l'ancienne (ajout)
+this.contactsSignal.update(liste => [...liste, contactCree]);
+```
+
+Le détail de ce fichier, étape par étape, est en section 12.
 
 ### Dans un template HTML
 
@@ -215,6 +254,16 @@ elementCourant = computed(() =>
 );
 ```
 
+**Dans le projet** — [`pages/contact-detail/contact-detail.ts`](../carnet-contact_frontend/src/app/pages/contact-detail/contact-detail.ts)
+
+```typescript
+private contactId = Number(this.route.snapshot.paramMap.get('id'));
+
+contact = computed(() =>
+  this.contactService.contacts().find(c => c.id === this.contactId)
+);
+```
+
 | | `signal()` | `computed()` |
 |---|---|---|
 | Contient | Une valeur qu'on fixe soi-même | Une valeur déduite d'autres signals |
@@ -250,6 +299,22 @@ Un piège fréquent : un `effect()` qui modifie quelque chose à chaque exécuti
 | Produit | Une valeur (signal en lecture seule) | Rien — un effet de bord |
 | Sert à | Dériver une donnée d'autres signals | Synchroniser avec l'extérieur (stockage, réseau, formulaire, log) |
 | Se lit | `maValeur()` | ne se lit pas |
+
+**Dans le projet** — [`pages/contact-edit/contact-edit.ts`](../carnet-contact_frontend/src/app/pages/contact-edit/contact-edit.ts)
+
+```typescript
+private formulaireRempli = false;
+
+constructor() {
+  effect(() => {
+    const c = this.contact();                 // lit le signal partagé
+    if (c && !this.formulaireRempli) {
+      this.contactForm.patchValue(c);          // action : remplir le formulaire
+      this.formulaireRempli = true;            // garde-fou : une seule fois
+    }
+  });
+}
+```
 
 ---
 
@@ -295,6 +360,25 @@ export class MonComposant {
 
 L'injection de dépendances est un mécanisme qui inverse la responsabilité de création des objets : plutôt que d'écrire soi-même `new MonService()` (ce qui créerait une nouvelle instance, allant à l'encontre du principe de singleton), on demande à Angular de nous **fournir** l'instance déjà existante. `inject()` est la syntaxe moderne pour formuler cette demande — elle remplace l'ancienne approche qui consistait à recevoir le service en paramètre du constructeur de la classe.
 
+**Dans le projet** — le service [`services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts), injecté dans plusieurs composants
+
+```typescript
+// contact.ts — un seul exemplaire pour toute l'application
+@Injectable({ providedIn: 'root' })
+export class ContactService {
+  private http = inject(HttpClient);   // le service injecte lui-même une dépendance
+  // ...
+}
+```
+
+```typescript
+// contact-list.ts, contact-detail.ts, contact-edit.ts, accueil.ts :
+// tous reçoivent LA MÊME instance
+private contactService = inject(ContactService);
+```
+
+C'est cette unicité qui fait fonctionner le signal partagé de la section 12 : quatre composants, un seul service, un seul signal.
+
 ---
 
 ## 5. Syntaxe de template (`@if` / `@for`)
@@ -331,6 +415,26 @@ Le mot-clé `track` est obligatoire avec `@for`, et il mérite une explication :
 }
 ```
 
+**Dans le projet** — [`components/contact-list/contact-list.html`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.html)
+
+```html
+@if (contacts().length === 0) {
+  <p>Aucun contact enregistré.</p>
+} @else {
+  <ul>
+    @for (contact of contacts(); track contact.id) {
+      <li>
+        <a [routerLink]="['/contact', contact.id]">{{ contact.prenom }} {{ contact.nom }}</a>
+        — {{ contact.email }} — {{ contact.telephone }}
+        <button (click)="supprimer(contact.id)">Supprimer</button>
+      </li>
+    }
+  </ul>
+}
+```
+
+Le projet utilise `@if/@else` plutôt que le bloc `@empty`, mais le résultat est le même : un message quand la liste est vide.
+
 ---
 
 ## 6. Bindings
@@ -363,6 +467,15 @@ Exécute une méthode du composant en réaction à un événement du DOM (un cli
 ```
 
 Retenir la logique visuelle aide à se souvenir de laquelle utiliser : les crochets `[ ]` "font entrer" une donnée dans l'élément HTML (comme une fenêtre par laquelle on regarde vers l'intérieur), tandis que les parenthèses `( )` "font sortir" une action vers le TypeScript (comme un signal qui part de l'élément).
+
+**Dans le projet** — les trois bindings sont visibles à la lecture des templates
+
+| Binding | Fichier | Ligne |
+|---|---|---|
+| `{{ }}` interpolation | [`app.html`](../carnet-contact_frontend/src/app/app.html) | `<h1>{{ title() }}</h1>` |
+| `[ ]` propriété | [`contact-form.html`](../carnet-contact_frontend/src/app/components/contact-form/contact-form.html) | `[formGroup]="contactForm"`, `[disabled]="contactForm.invalid"` |
+| `( )` événement | [`contact-list.html`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.html) | `(click)="supprimer(contact.id)"` |
+| `( )` événement | [`accueil.html`](../carnet-contact_frontend/src/app/pages/accueil/accueil.html) | `(contactAjoute)="ajouterContact($event)"` (événement personnalisé, section 8) |
 
 ---
 
@@ -428,6 +541,36 @@ La propriété `monFormulaire.valid` (et son inverse `.invalid`) est recalculée
 
 Chacune de ces quatre lignes illustre bien la combinaison des bindings vus plus haut : `[formGroup]` est un binding de propriété qui relie tout le `<form>` à l'objet `FormGroup` du TypeScript ; `formControlName` fait le lien fin entre un `<input>` précis et le champ correspondant à l'intérieur de ce groupe ; `(ngSubmit)` est un binding d'événement qui capture la soumission du formulaire (que ce soit par clic sur le bouton ou par la touche Entrée) ; et `[disabled]` est encore un binding de propriété qui désactive dynamiquement le bouton tant que le formulaire entier n'est pas valide.
 
+**Dans le projet** — [`components/contact-form/contact-form.ts`](../carnet-contact_frontend/src/app/components/contact-form/contact-form.ts) et [`contact-form.html`](../carnet-contact_frontend/src/app/components/contact-form/contact-form.html)
+
+```typescript
+private fb = inject(FormBuilder);
+
+contactForm = this.fb.group({
+  nom: ['', Validators.required],
+  prenom: ['', Validators.required],
+  email: ['', [Validators.required, Validators.email]],
+  telephone: ['']
+});
+
+onSubmit(): void {
+  if (this.contactForm.valid) {
+    this.contactAjoute.emit(this.contactForm.value as Contact);
+    this.contactForm.reset();
+  }
+}
+```
+
+```html
+<form [formGroup]="contactForm" (ngSubmit)="onSubmit()">
+  <div><input formControlName="nom" placeholder="Nom" /></div>
+  <!-- ... prenom, email, telephone ... -->
+  <button type="submit" [disabled]="contactForm.invalid">Ajouter</button>
+</form>
+```
+
+Le formulaire d'édition [`contact-edit.ts`](../carnet-contact_frontend/src/app/pages/contact-edit/contact-edit.ts) réutilise exactement la même structure, avec `patchValue()` en plus.
+
 ### Pré-remplir un formulaire existant
 
 Les valeurs déclarées dans `.group({...})` ne servent qu'au démarrage. Pour afficher un formulaire déjà rempli (cas d'une page d'édition), on injecte les valeurs actuelles après coup avec `patchValue()` :
@@ -466,6 +609,27 @@ export class ComposantEnfant {
 
 Ce mécanisme fonctionne en deux temps distincts. D'abord, l'enfant déclare, avec `output<Type>()`, qu'il est capable d'émettre un événement personnalisé nommé comme la propriété (`monEvenement` ici), transportant une donnée d'un type précis. Ensuite, quelque part dans sa logique interne (typiquement en réaction à une action utilisateur), il appelle `.emit(laDonnee)` pour effectivement déclencher cet événement avec une valeur donnée. Côté parent, on écoute cet événement exactement comme on écouterait un événement natif du DOM (`(click)`, `(ngSubmit)`...), sauf qu'ici le nom entre parenthèses correspond au nom choisi pour l'`output`. La variable spéciale `$event` récupère automatiquement la donnée qui a été passée à `.emit(...)`.
 
+**Dans le projet** — l'enfant [`contact-form.ts`](../carnet-contact_frontend/src/app/components/contact-form/contact-form.ts), le parent [`accueil.ts`](../carnet-contact_frontend/src/app/pages/accueil/accueil.ts) / [`accueil.html`](../carnet-contact_frontend/src/app/pages/accueil/accueil.html)
+
+```typescript
+// contact-form.ts (enfant) — déclare l'événement, puis l'émet à la soumission
+contactAjoute = output<Contact>();
+// ...
+this.contactAjoute.emit(this.contactForm.value as Contact);
+```
+
+```html
+<!-- accueil.html (parent) — écoute l'événement, $event porte le Contact émis -->
+<app-contact-form (contactAjoute)="ajouterContact($event)"></app-contact-form>
+```
+
+```typescript
+// accueil.ts (parent) — reçoit la donnée et la transmet au service
+ajouterContact(contact: Contact): void {
+  this.contactService.addContact(contact);
+}
+```
+
 ---
 
 ## 9. HTML sémantique
@@ -479,6 +643,8 @@ Le HTML sémantique consiste à choisir ses balises en fonction du **rôle** du 
 | `<ul>` | Liste à puces (*unordered list*), pour des éléments sans ordre particulier |
 | `<ol>` | Liste numérotée (*ordered list*), pour des éléments dont l'ordre a un sens |
 | `<li>` | Élément de liste (*list item*), doit obligatoirement être placé à l'intérieur d'un `<ul>` ou d'un `<ol>` |
+
+**Dans le projet** — [`contact-list.html`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.html) : titre `<h2>`, liste `<ul>` / `<li>` (une puce par contact, sans ordre imposé), et `<p>` pour le message de liste vide.
 
 ---
 
@@ -498,6 +664,19 @@ export const appConfig: ApplicationConfig = {
 ```
 
 Ce `provideHttpClient()` doit être ajouté une seule fois, dans la configuration globale de l'application (`app.config.ts`). C'est ce qu'on appelle un "provider" : une fonction qui active une fonctionnalité pour toute l'application. Sans cette ligne, tenter d'injecter `HttpClient` dans un service provoquerait une erreur au démarrage, puisque cette fonctionnalité ne serait tout simplement pas configurée.
+
+**Dans le projet** — [`app.config.ts`](../carnet-contact_frontend/src/app/app.config.ts)
+
+```typescript
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideBrowserGlobalErrorListeners(),
+    provideRouter(routes),
+    provideClientHydration(withEventReplay()),
+    provideHttpClient()
+  ]
+};
+```
 
 ### Le concept d'Observable
 
@@ -558,6 +737,19 @@ this.monService.supprimer(id).subscribe(() => {
 
 Ce qui se passe concrètement, dans l'ordre chronologique : l'appel à `this.monService.getTout()` ne fait que préparer et retourner un Observable, sans effet immédiat. L'appel enchaîné à `.subscribe(callback)` déclenche alors réellement l'envoi de la requête HTTP vers le serveur. Le navigateur attend ensuite la réponse — pendant ce temps, le reste du code du composant continue de s'exécuter normalement, sans être bloqué. Ce n'est que lorsque la réponse arrive effectivement que la fonction `callback` passée à `.subscribe()` est exécutée, avec la donnée reçue en paramètre. C'est à ce moment précis, souvent bien plus tard dans le temps par rapport aux lignes de code qui l'entourent, qu'on peut par exemple mettre à jour un signal local avec cette donnée.
 
+**Dans le projet** — [`services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts)
+
+Le service du carnet a d'abord ressemblé exactement au bloc générique ci-dessus (des méthodes retournant `Observable<Contact[]>`, l'abonnement fait dans les composants). Il a ensuite évolué vers le pattern de la **section 12** : l'`Observable` de `http.get/post/put/delete` est toujours là, mais l'abonnement (`.subscribe()`) a été remonté dans le service, qui range le résultat dans un signal. Les méthodes retournent désormais `void`.
+
+```typescript
+// état actuel — l'Observable est un détail interne, plus une valeur de retour
+chargerContacts(): void {
+  this.http.get<Contact[]>(this.apiUrl).subscribe(data => {
+    this.contactsSignal.set(data);
+  });
+}
+```
+
 ---
 
 ## 11. Cycle de vie d'un composant
@@ -578,6 +770,19 @@ export class MonComposant implements OnInit {
 Angular appelle automatiquement, à des moments précis et prévisibles de l'existence d'un composant, un certain nombre de méthodes spéciales appelées "hooks de cycle de vie" — `ngOnInit()` en est la plus utilisée. Elle est déclenchée une seule fois, juste après qu'Angular ait fini de créer le composant et d'initialiser ses propriétés de base, mais avant que l'utilisateur ne voie quoi que ce soit à l'écran.
 
 La question qui revient souvent est : pourquoi ne pas simplement mettre cette logique directement dans le constructeur de la classe ? La convention Angular réserve le constructeur à une initialisation très basique (typiquement, recevoir des dépendances injectées), et déconseille d'y placer une logique plus complexe comme un appel réseau. `ngOnInit()` garantit que le composant est déjà pleinement construit et prêt, ce qui le rend plus fiable comme point de départ pour charger des données ou effectuer d'autres opérations d'initialisation qui dépendent de l'état complet du composant.
+
+**Dans le projet** — [`components/contact-list/contact-list.ts`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.ts), et aussi `contact-detail.ts` / `contact-edit.ts`
+
+```typescript
+export class ContactList implements OnInit {
+  ngOnInit(): void {
+    // premier chargement : demande au service de remplir le signal partagé
+    this.contactService.chargerContacts();
+  }
+}
+```
+
+`contact-edit.ts` montre la complémentarité `ngOnInit()` / `constructor` : le `constructor` y installe l'`effect()` (enregistrement, pas de logique réseau), tandis que `ngOnInit()` déclenche le chargement des données.
 
 ---
 
