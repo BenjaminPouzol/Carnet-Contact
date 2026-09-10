@@ -21,9 +21,10 @@ Document de référence détaillé, organisé par notion. Chaque section combine
 13. [Routing Angular](#13-routing-angular)
 14. [Modification d'une ressource (PUT, formulaire pré-rempli)](#14-modification-dune-ressource-put-formulaire-pré-rempli)
 15. [Gestion des erreurs HTTP (`catchError`)](#15-gestion-des-erreurs-http-catcherror)
-16. [Backend Spring Boot](#16-backend-spring-boot)
-17. [Git et GitHub](#17-git-et-github)
-18. [Pense-bête de dépannage](#18-pense-bête-de-dépannage)
+16. [Indicateur de chargement (`finalize`)](#16-indicateur-de-chargement-finalize)
+17. [Backend Spring Boot](#17-backend-spring-boot)
+18. [Git et GitHub](#18-git-et-github)
+19. [Pense-bête de dépannage](#19-pense-bête-de-dépannage)
 
 ---
 
@@ -1663,9 +1664,128 @@ protected contactService = inject(ContactService);
 
 ### Pourquoi le POST met plus longtemps à signaler l'échec que le GET
 
-Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 16). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
+Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 17). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
 
-## 16. Backend Spring Boot
+## 16. Indicateur de chargement (`finalize`)
+
+### Le problème : l'attente invisible
+
+Entre l'instant où `.subscribe()` déclenche une requête et celui où la réponse arrive, l'application ne montre rien. En local avec un serveur rapide, ce trou dure quelques millisecondes — invisible. Mais dès que le réseau ralentit ou que le serveur réfléchit, l'utilisateur fait face à une interface figée et réagit mal : il reclique sur « Valider » (deux requêtes, parfois deux enregistrements), ou il recharge la page en croyant que c'est bloqué (et perd l'état de l'application).
+
+Rendre l'attente visible n'est pas qu'un confort : coupler cet état à un `[disabled]` sur les boutons **empêche** le double-envoi.
+
+### Un signal booléen, allumé avant, éteint après
+
+Le service tient un troisième signal, à côté des données et de l'erreur : `true` tant qu'une requête est en cours. Même encapsulation (privé modifiable + vitrine `readonly`).
+
+```typescript
+private chargementSignal = signal(false);
+readonly chargement = this.chargementSignal.asReadonly();
+```
+
+On le passe à `true` juste avant l'appel HTTP. Reste à le remettre à `false` **quoi qu'il arrive** — succès comme erreur.
+
+### `finalize` : s'exécuter à la fin du flux, pour n'importe quelle raison
+
+Mettre `set(false)` uniquement dans le `.subscribe(next)` ne suffit pas : ce callback ne s'exécute pas si le flux part en erreur — l'indicateur resterait allumé indéfiniment. Le mettre à deux endroits (`.subscribe` **et** `catchError`) fonctionne, mais c'est dupliqué et on oublie vite un cas.
+
+`finalize(callback)` est l'opérateur fait pour ça : son `callback` tourne quand l'Observable se termine, **quelle que soit l'issue** — valeur émise puis complétion, ou erreur. On le place dans le `.pipe()`, **après `catchError`**, pour qu'il s'exécute aussi après le flux de repli.
+
+```typescript
+import { catchError, finalize, of } from 'rxjs';
+
+chargerTout(): void {
+  this.chargementSignal.set(true);
+
+  this.http.get<T[]>(this.apiUrl).pipe(
+    catchError(() => {
+      this.erreurSignal.set('Chargement impossible.');
+      return of([]);
+    }),
+    finalize(() => this.chargementSignal.set(false)), // succès OU erreur
+  ).subscribe(data => this.itemsSignal.set(data));
+}
+```
+
+| Emplacement de `set(false)` | Couvre le succès | Couvre l'erreur | Sans duplication |
+|---|---|---|---|
+| Dans `.subscribe(next)` | oui | **non** | oui |
+| Dans `.subscribe(next)` + `catchError` | oui | oui | **non** |
+| Dans `finalize()` | oui | oui | oui |
+
+### Afficher l'indicateur et bloquer les boutons
+
+L'indicateur lui-même est transverse : il vit dans la coquille, comme la bannière d'erreur (section 15).
+
+```html
+@if (service.chargement()) {
+  <p class="chargement">Chargement…</p>
+}
+```
+
+Le garde-fou anti double-clic, lui, se pose sur chaque bouton qui déclenche une requête. Le composant lit le signal du service (référence, pas copie) et l'ajoute à la condition de `[disabled]` :
+
+```typescript
+chargement = this.service.chargement;
+```
+
+```html
+<button type="submit" [disabled]="form.invalid || chargement()">Valider</button>
+<button (click)="supprimer(x.id)" [disabled]="chargement()">Supprimer</button>
+```
+
+### Dans le projet
+
+**Service** — [`carnet-contact_frontend/src/app/services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts)
+
+```typescript
+import { EMPTY, of, catchError, finalize } from 'rxjs';
+
+private chargementSignal = signal(false);
+readonly chargement = this.chargementSignal.asReadonly();
+
+chargerContacts(): void {
+  this.erreurSignal.set(null);
+  this.chargementSignal.set(true);
+
+  this.http.get<Contact[]>(this.apiUrl).pipe(
+    catchError(() => {
+      this.erreurSignal.set('Impossible de charger les contacts. Le serveur est-il démarré ?');
+      return of([]);
+    }),
+    finalize(() => this.chargementSignal.set(false))
+  ).subscribe(data => this.contactsSignal.set(data));
+}
+```
+
+Les trois écritures (`addContact`, `modifierContact`, `deleteContact`) portent le même `chargementSignal.set(true)` avant l'appel et le même `finalize(...)` dans le `.pipe()`.
+
+**Coquille** — [`app.html`](../carnet-contact_frontend/src/app/app.html)
+
+```html
+@if (contactService.chargement()) {
+  <p class="chargement">Chargement…</p>
+}
+```
+
+**Boutons** — [`contact-form.ts`](../carnet-contact_frontend/src/app/components/contact-form/contact-form.ts) / [`contact-form.html`](../carnet-contact_frontend/src/app/components/contact-form/contact-form.html) (et de même dans [`contact-list`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.ts) et [`contact-edit`](../carnet-contact_frontend/src/app/pages/contact-edit/contact-edit.ts))
+
+```typescript
+// contact-form.ts
+private contactService = inject(ContactService);
+chargement = this.contactService.chargement;
+```
+
+```html
+<!-- contact-form.html -->
+<button type="submit" [disabled]="contactForm.invalid || chargement()">Ajouter</button>
+```
+
+### Pourquoi l'indicateur reste invisible au chargement de la page (SSR)
+
+Au premier affichage, `chargerContacts()` s'exécute **côté serveur** (rendu SSR, section 13) : `chargement` passe à `true` puis revient à `false` sur le serveur, avant même que le HTML ne parte vers le navigateur. La page arrive déjà remplie — l'indicateur n'a jamais eu, côté client, une image d'écran où s'afficher. Il n'apparaît que sur les requêtes **déclenchées par une action** (ajout, modification, suppression), qui partent forcément du navigateur.
+
+## 17. Backend Spring Boot
 
 Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
 
@@ -1809,7 +1929,7 @@ Le principe est exactement le même que l'injection de dépendances vue côté A
 
 ---
 
-## 17. Git et GitHub
+## 18. Git et GitHub
 
 Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
 
@@ -1866,7 +1986,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 
 ---
 
-## 18. Pense-bête de dépannage
+## 19. Pense-bête de dépannage
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
@@ -1890,9 +2010,13 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Une liste ne se met pas à jour après un ajout ou une suppression faits par un autre composant | Chaque composant possède sa propre copie de la donnée dans un signal local | Déplacer la donnée dans le service (signal partagé, voir section 12) plutôt que de recharger la page |
 | Le formulaire d'édition reste vide alors que la fiche s'affiche bien | Formulaire pré-rempli à la construction, avant l'arrivée des données du signal partagé | Pré-remplir dans un `effect()` qui réagit au signal, pas dans le `constructor` directement (section 14) |
 | Le formulaire d'édition efface la saisie en cours de temps en temps | Un `effect()` de pré-remplissage se réexécute à chaque changement du signal (ex : rechargement de la liste) | Ajouter un drapeau booléen : ne `patchValue()` qu'une seule fois |
-| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 16) ; regarder la ligne `preflight` dans l'onglet Réseau |
+| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 17) ; regarder la ligne `preflight` dans l'onglet Réseau |
 | Modification enregistrée côté serveur mais la fiche affiche encore l'ancienne valeur | Le signal partagé n'a pas été mis à jour après le `PUT` | Dans le service, `.update()` avec `.map()` pour remplacer l'élément modifié par la réponse du serveur |
 | `NG0203` / `inject() must be called from an injection context` sur un `effect()` | `effect()` appelé hors constructeur / hors champ de classe | Le déplacer dans le `constructor` du composant |
 | Backend éteint ou en erreur : liste vide, formulaire sans réaction, aucun message | `.subscribe()` n'a qu'un callback de succès, l'erreur du flux n'est traitée nulle part | `.pipe(catchError(...))` dans le service + un signal d'erreur affiché (section 15) |
 | `catchError` provoque `Type 'void' is not assignable to type 'ObservableInput<...>'` | Le callback de `catchError` ne retourne pas d'Observable | Retourner `of(valeurDeRepli)`, `EMPTY`, ou `throwError(() => err)` |
-| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 16) |
+| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 17) |
+| Une modification du code (nouveau signal, `delay()` ajouté...) reste sans effet dans le navigateur | Le rechargement à chaud de `ng serve` n'a pas pris (fréquent sous Windows / avec le SSR) | `Ctrl + C` sur `ng serve`, `npm start`, attendre `bundle generation complete`, puis `Ctrl + Shift + R` dans le navigateur |
+| L'indicateur de chargement ne s'affiche jamais au rafraîchissement de la page | Le `GET` initial part côté serveur (SSR) : `chargement` passe à `true` puis `false` avant l'envoi du HTML | Normal ; l'indicateur n'apparaît que sur les requêtes déclenchées par un clic (ajout, modif, suppression), section 16 |
+| L'indicateur de chargement reste allumé après une erreur réseau | `set(false)` placé seulement dans `.subscribe(next)`, qui ne s'exécute pas en cas d'erreur | Le mettre dans `finalize()` du `.pipe()`, qui s'exécute quelle que soit l'issue (section 16) |
+| Un contact en double après un double-clic sur « Ajouter » | Le bouton reste actif pendant la requête, chaque clic renvoie un `POST` | `[disabled]="form.invalid \|\| chargement()"` sur le bouton, en lisant le signal `chargement` du service |

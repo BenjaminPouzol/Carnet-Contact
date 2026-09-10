@@ -170,10 +170,34 @@ Notions ajoutées au support : **section 15 « Gestion des erreurs HTTP
 `throwError`, la forme objet de `.subscribe({ next, error })`, le signal
 d'état d'erreur. Sections Backend/Git/Pense-bête renumérotées 16/17/18.
 
+### Partie 7 — Indicateur de chargement
+Objectif : rendre visible le délai d'une requête, et surtout **empêcher le
+double-envoi** en désactivant les boutons pendant l'attente. Prolonge encore
+le même service (troisième signal, à côté de `contacts` et `erreur`).
+
+27. `ContactService` : signal `chargement` (privé + `readonly`), passé à
+    `true` avant chaque appel HTTP et remis à `false` dans un
+    `finalize()` du `.pipe()` — placé **après `catchError`** pour couvrir
+    succès ET erreur sans duplication
+28. Bannière « Chargement… » dans la coquille (`App`), même logique
+    transverse que la bannière d'erreur
+29. Boutons « Ajouter » / « Enregistrer » / « Supprimer » en
+    `[disabled]` tant que `chargement()` est vrai — `ContactForm` doit
+    pour cela injecter le service
+
+Diagnostic marquant de cette partie : un `delay(1500)` `[PROVISOIRE]` a
+servi à isoler « câblage cassé » de « requête trop rapide pour être vue » ;
+la vraie cause du symptôme initial était que `ng serve` n'avait pas rechargé
+le bundle (redémarrage + `Ctrl+Shift+R` nécessaires). À retenir comme
+réflexe de débogage. Également compris : l'indicateur ne peut pas s'afficher
+au chargement de la page, le `GET` initial partant côté serveur (SSR).
+
+Notions ajoutées au support : **section 16 « Indicateur de chargement
+(`finalize`) »**. Sections Backend/Git/Pense-bête renumérotées 17/18/19.
+
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
-- Indicateur de chargement pendant les requêtes (signal `chargement`)
 - Intercepteur HTTP
 - Pagination et recherche côté backend
 - Tests unitaires (fichiers `.spec.ts` déjà générés par le CLI, jamais 
