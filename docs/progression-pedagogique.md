@@ -195,13 +195,76 @@ au chargement de la page, le `GET` initial partant côté serveur (SSR).
 Notions ajoutées au support : **section 16 « Indicateur de chargement
 (`finalize`) »**. Sections Backend/Git/Pense-bête renumérotées 17/18/19.
 
+### Partie 8 — Intercepteurs HTTP
+Objectif : sortir du service métier la plomberie transverse (indicateur de
+chargement, message d'erreur) accumulée aux Parties 6 et 7. Partie demandée
+« d'un seul coup » par l'utilisateur, sans validation intermédiaire — première
+fois depuis le début du projet ; le découpage en étapes a quand même été
+présenté et expliqué avant d'écrire le code.
+
+Motivation venue du code lui-même : les quatre méthodes de `ContactService`
+répétaient les trois mêmes lignes (`erreurSignal.set(null)`,
+`chargementSignal.set(true)`, `finalize(...)`). Le problème mis en avant n'est
+pas le volume dupliqué mais **l'oubli** — rien n'oblige une cinquième méthode
+à les recopier.
+
+30. Nouveau service transverse `services/etat-http.ts` (`EtatHttpService`),
+    sans aucune notion de métier : il porte le compteur de requêtes et le
+    message d'erreur. Notion neuve : un **compteur** + `computed()` au lieu
+    d'un booléen, parce que l'intercepteur voit désormais des requêtes qui
+    peuvent se chevaucher. Justification aussi donnée pour ne pas laisser ces
+    signaux dans `ContactService` : boucle de dépendances intercepteur →
+    service → `HttpClient` → intercepteur
+31. `chargementInterceptor` : cas « observer sans modifier ». Reprend le
+    `finalize()` des quatre méthodes
+32. `erreurInterceptor` : cas « intercepter sans avaler ». Traduit
+    `HttpErrorResponse.status` en message, puis **relance** l'erreur avec
+    `throwError` — le point clé de la partie : l'intercepteur décide du
+    MESSAGE (générique), le service garde la décision de la VALEUR DE REPLI
+    (`of([])` vs `EMPTY`), lui seul sachant s'il lisait ou écrivait
+33. `baseUrlInterceptor` : cas « modifier la requête ». `req.clone()` et
+    l'immuabilité de `HttpRequest`. Le service passe à une URL relative
+    (`/api/contacts`) et ne connaît plus l'adresse du backend
+34. Enregistrement par `provideHttpClient(withInterceptors([...]))`, avec
+    l'ordre de la chaîne expliqué (aller de haut en bas, retour en sens
+    inverse)
+35. Répercussions : `ContactService` passe de 90 à 59 lignes ; `App` n'injecte
+    plus `ContactService` du tout (un affichage transverse dépend maintenant
+    d'un état transverse) ; les trois composants à bouton lisent `chargement`
+    depuis `EtatHttpService` ; `ContactForm` perd son import de
+    `ContactService`, devenu mort
+
+Contrepartie assumée et documentée : les messages d'erreur perdent leur
+nuance métier (« Impossible d'ajouter le contact ») pour une nuance technique
+(« Serveur injoignable », « Erreur interne du serveur (500) »). Jugé
+globalement gagnant — l'utilisateur apprend *pourquoi* l'appel a échoué — avec
+la porte de sortie notée dans le support : le `catchError` du service
+s'exécutant après celui de l'intercepteur, il peut toujours réécrire le
+message.
+
+Vérification : `npx ng build` passe, prérendu SSR de la route d'accueil
+compris — ce qui valide que l'intercepteur de base URL réécrit bien l'URL
+relative avant l'appel réseau côté serveur (une URL relative partant vers le
+réseau depuis le serveur aurait échoué).
+
+Notions ajoutées au support : **section 17 « Intercepteurs HTTP »** —
+`HttpInterceptorFn`, la signature `(req, next)`, la chaîne et son ordre,
+`withInterceptors`, `req.clone()` et l'immuabilité, `HttpErrorResponse.status`,
+`throwError`, le compteur dérivé par `computed()`, un tableau « qui décide
+quoi » entre intercepteur et service, et une liste « ce qu'un intercepteur ne
+doit pas faire ». Six entrées ajoutées au pense-bête. Sections Backend/Git/
+Pense-bête renumérotées 18/19/20.
+
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
-- Intercepteur HTTP
 - Pagination et recherche côté backend
 - Tests unitaires (fichiers `.spec.ts` déjà générés par le CLI, jamais 
   exploités jusqu'ici)
+- Console H2 non activée : `application.properties` ne contient que
+  `spring.application.name`, alors que la dépendance est présente. Aucun
+  moyen d'inspecter la table en direct pour l'instant
+
 ## Comment poursuivre cette philosophie
 
 Si l'utilisateur demande de l'aide sur une nouvelle fonctionnalité, ne pas 

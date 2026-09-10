@@ -22,9 +22,10 @@ Document de référence détaillé, organisé par notion. Chaque section combine
 14. [Modification d'une ressource (PUT, formulaire pré-rempli)](#14-modification-dune-ressource-put-formulaire-pré-rempli)
 15. [Gestion des erreurs HTTP (`catchError`)](#15-gestion-des-erreurs-http-catcherror)
 16. [Indicateur de chargement (`finalize`)](#16-indicateur-de-chargement-finalize)
-17. [Backend Spring Boot](#17-backend-spring-boot)
-18. [Git et GitHub](#18-git-et-github)
-19. [Pense-bête de dépannage](#19-pense-bête-de-dépannage)
+17. [Intercepteurs HTTP](#17-intercepteurs-http)
+18. [Backend Spring Boot](#18-backend-spring-boot)
+19. [Git et GitHub](#19-git-et-github)
+20. [Pense-bête de dépannage](#20-pense-bête-de-dépannage)
 
 ---
 
@@ -1664,7 +1665,7 @@ protected contactService = inject(ContactService);
 
 ### Pourquoi le POST met plus longtemps à signaler l'échec que le GET
 
-Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 17). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
+Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 18). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
 
 ## 16. Indicateur de chargement (`finalize`)
 
@@ -1785,7 +1786,312 @@ chargement = this.contactService.chargement;
 
 Au premier affichage, `chargerContacts()` s'exécute **côté serveur** (rendu SSR, section 13) : `chargement` passe à `true` puis revient à `false` sur le serveur, avant même que le HTML ne parte vers le navigateur. La page arrive déjà remplie — l'indicateur n'a jamais eu, côté client, une image d'écran où s'afficher. Il n'apparaît que sur les requêtes **déclenchées par une action** (ajout, modification, suppression), qui partent forcément du navigateur.
 
-## 17. Backend Spring Boot
+## 17. Intercepteurs HTTP
+
+### Le problème : la plomberie transverse recopiée à chaque appel
+
+À la fin de la section 16, chacune des quatre méthodes du service ouvrait sur les deux mêmes lignes et refermait sur le même opérateur :
+
+```typescript
+this.erreurSignal.set(null);                          // ×4, identique
+this.chargementSignal.set(true);                      // ×4, identique
+finalize(() => this.chargementSignal.set(false))      // ×4, identique
+```
+
+Douze lignes strictement dupliquées. Mais le vrai coût n'est pas le volume de code : c'est **l'oubli**. Le jour où l'on ajoute une cinquième méthode, rien ne force à recopier ces lignes. Le bouton restera actif pendant la requête, l'erreur passera en silence — et le défaut ne se verra qu'à l'usage. Une règle qui doit valoir pour **toutes** les requêtes ne peut pas reposer sur la discipline du développeur à chaque appel.
+
+Il y a aussi un problème de responsabilité. Un service métier a un sujet : gérer des contacts, des factures, des utilisateurs. « Allumer un indicateur pendant une requête » n'appartient à aucun de ces sujets : c'est une règle de l'application entière. Ce code était au mauvais endroit.
+
+### Ce qu'est un intercepteur
+
+Un intercepteur est une fonction qu'Angular insère **entre `HttpClient` et le réseau**. Toute requête émise par n'importe quel service la traverse, sans que ce service en sache quoi que ce soit.
+
+C'est le même principe qu'un `.pipe()` (section 15), mais monté un étage plus haut : au lieu d'être branché sur *un* appel, il est branché sur *tous*.
+
+```
+Service ──► HttpClient ──► intercepteur A ──► intercepteur B ──► réseau
+                                 ▲                  ▲              │
+                                 └──── réponse ─────┴──────────────┘
+```
+
+À l'aller la requête descend la chaîne, au retour la réponse la remonte **en sens inverse**. Un intercepteur voit donc les deux : il peut agir avant l'envoi et après la réception.
+
+### La signature `(req, next)`
+
+Un intercepteur moderne est une simple fonction, typée `HttpInterceptorFn`, et non plus une classe :
+
+```typescript
+import { HttpInterceptorFn } from '@angular/common/http';
+
+export const monIntercepteur: HttpInterceptorFn = (req, next) => {
+  // 1. Ici : avant que la requête ne parte.
+  //    req est la requête sortante (url, méthode, en-têtes, corps).
+
+  // 2. next(req) la transmet au maillon suivant — autre intercepteur, ou
+  //    le réseau — et renvoie l'Observable de la réponse.
+  return next(req).pipe(
+    // 3. Ici : les opérateurs qui traitent la réponse au retour.
+  );
+};
+```
+
+Deux règles à retenir : il faut **toujours** appeler `next(...)` (sinon la requête ne part jamais), et il faut **retourner** l'Observable qu'il rend (sinon `HttpClient` n'a rien à quoi s'abonner).
+
+| Élément | Rôle |
+|---|---|
+| `req` | La requête sortante — objet **immuable** (`HttpRequest`) |
+| `next(req)` | Transmet au maillon suivant et rend l'`Observable` de la réponse |
+| `req.clone({ … })` | Copie de la requête avec des champs remplacés — la seule façon de la « modifier » |
+| `inject(MonService)` | Fonctionne dans un intercepteur : il s'exécute dans un contexte d'injection |
+| `.pipe(finalize(…))` | Agir à la fin, quelle que soit l'issue |
+| `.pipe(catchError(…))` | Traiter l'erreur au retour |
+
+### Les enregistrer : `withInterceptors`
+
+On les déclare une fois pour toutes à côté de `provideHttpClient()`. L'ordre du tableau est l'ordre de la chaîne à l'aller.
+
+```typescript
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideHttpClient(
+      withInterceptors([
+        premierIntercepteur,   // voit la requête en premier
+        secondIntercepteur,    // ...et la réponse en dernier
+      ])
+    )
+  ]
+};
+```
+
+Mieux vaut **un intercepteur par responsabilité** qu'un gros intercepteur qui fait tout : chacun reste lisible seul, et on peut en retirer un sans toucher aux autres.
+
+### Cas 1 — observer : compter les requêtes en vol
+
+Le premier usage est le plus simple : ne rien modifier, seulement constater. L'intercepteur incrémente un compteur avant, le décrémente dans un `finalize` après.
+
+Un détail change par rapport à la section 16, et il est important. Tant que chaque méthode gérait son propre indicateur, un **booléen** suffisait, parce que les requêtes ne se chevauchaient jamais. Maintenant que l'intercepteur les voit toutes, deux peuvent être en vol simultanément — et avec un booléen, la première qui se termine éteindrait l'indicateur alors que la seconde tourne encore. La réponse est de **compter**, puis de dériver le booléen avec un `computed()` (section 3) :
+
+```typescript
+// Le service qui porte l'état, sans aucune notion de métier
+@Injectable({ providedIn: 'root' })
+export class EtatHttpService {
+  private requetesEnCours = signal(0);
+  // Le booléen est DÉRIVÉ du compteur : impossible de les désynchroniser.
+  readonly chargement = computed(() => this.requetesEnCours() > 0);
+
+  debutRequete(): void { this.requetesEnCours.update(n => n + 1); }
+  finRequete(): void  { this.requetesEnCours.update(n => Math.max(0, n - 1)); }
+}
+```
+
+```typescript
+export const chargementInterceptor: HttpInterceptorFn = (req, next) => {
+  const etat = inject(EtatHttpService);
+
+  etat.debutRequete();
+
+  return next(req).pipe(
+    // Même raisonnement que dans le service auparavant : finalize couvre le
+    // succès comme l'erreur. Il couvre même un cas de plus — le
+    // désabonnement, quand une requête est annulée parce que le composant
+    // qui l'attendait a été détruit.
+    finalize(() => etat.finRequete())
+  );
+};
+```
+
+**Pourquoi un service dédié plutôt que les signaux déjà présents dans le service métier ?** Pour deux raisons. D'abord parce que cet état est transverse, comme la bannière qui l'affiche : il n'a rien à faire dans un service qui parle de contacts. Ensuite pour une raison technique : un intercepteur qui injecterait `ContactService`, lequel injecte `HttpClient`, lequel appelle l'intercepteur, formerait une boucle de dépendances — Angular s'en sort, mais le code devient difficile à suivre.
+
+### Cas 2 — intercepter sans avaler : l'erreur et `throwError`
+
+Deuxième usage : centraliser le message d'erreur. L'intercepteur ne connaît pas l'intention métier de la requête (« ajouter un contact »), mais il connaît son **code de statut**, et c'est souvent l'information la plus utile à l'utilisateur.
+
+| `status` | Signification |
+|---|---|
+| `0` | Aucune réponse reçue : serveur éteint, réseau coupé, CORS refusé. Ce n'est pas un code du serveur, c'est son absence |
+| `400` | Requête mal formée, refusée par le serveur |
+| `401` / `403` | Non authentifié / non autorisé |
+| `404` | La ressource demandée n'existe pas |
+| `500` | Le serveur a planté en traitant la requête |
+
+Le point délicat est ailleurs. L'intercepteur **ne doit pas décider de la valeur de repli** : une lecture veut `of([])`, une écriture veut `EMPTY` (section 15), et seul le service appelant sait dans quel cas il est. L'intercepteur note donc le message, puis **relance** l'erreur avec `throwError` pour que le `catchError` du service continue de faire son travail.
+
+```typescript
+function messagePour(erreur: HttpErrorResponse): string {
+  switch (erreur.status) {
+    case 0:   return 'Serveur injoignable. Est-il bien démarré ?';
+    case 404: return 'Ressource introuvable (404).';
+    case 500: return 'Erreur interne du serveur (500).';
+    default:  return `Erreur inattendue (${erreur.status}).`;
+  }
+}
+
+export const erreurInterceptor: HttpInterceptorFn = (req, next) => {
+  const etat = inject(EtatHttpService);
+
+  etat.effacerErreur();   // nouvelle requête : on repart d'un état sain
+
+  return next(req).pipe(
+    catchError((erreur: HttpErrorResponse) => {
+      etat.signalerErreur(messagePour(erreur));
+
+      // throwError relance l'erreur telle quelle. SANS cette ligne,
+      // l'intercepteur « avalerait » l'échec : le service ne saurait jamais
+      // que sa requête a raté, et son catchError ne s'exécuterait pas.
+      return throwError(() => erreur);
+    })
+  );
+};
+```
+
+C'est la répartition qui compte, et elle vaut bien au-delà de ce cas : **le générique en haut, le spécifique en bas.**
+
+| Décision | Qui la prend | Pourquoi |
+|---|---|---|
+| Le message affiché à l'utilisateur | L'intercepteur | Dépend du code HTTP, pas du métier |
+| Allumer / éteindre l'indicateur | L'intercepteur | Règle identique pour toute requête |
+| La valeur de repli (`of([])` / `EMPTY`) | Le service | Seul lui sait s'il lisait ou écrivait |
+| Mettre à jour le signal des données | Le service | C'est son métier |
+
+Contrepartie assumée : le message perd sa nuance métier (« Impossible d'ajouter le contact ») au profit d'une nuance technique (« Serveur injoignable »). C'est souvent un gain — l'utilisateur apprend *pourquoi* ça a échoué. Si un message métier est vraiment nécessaire, le service peut toujours le réécrire dans son propre `catchError`, qui s'exécute **après** celui de l'intercepteur.
+
+### Cas 3 — modifier la requête : `clone()` et l'immuabilité
+
+Les deux premiers intercepteurs observaient sans toucher. Le troisième usage est celui pour lequel les intercepteurs sont surtout connus : **modifier la requête au passage**. C'est le mécanisme derrière l'ajout automatique d'un jeton d'authentification sur chaque appel.
+
+Un `HttpRequest` est **immuable** : `req.url = …` ou `req.headers.set(…)` ne modifient rien. Il faut passer par `clone()`, qui rend une copie avec les champs remplacés — et transmettre la copie à `next()`. Cette immuabilité est volontaire : elle garantit qu'un maillon de la chaîne ne peut pas altérer une requête que les autres ont déjà vue.
+
+```typescript
+// Le cas d'usage classique : authentifier toutes les requêtes d'un coup
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const jeton = inject(AuthService).jeton();
+  if (!jeton) {
+    return next(req);   // pas connecté : on laisse passer tel quel
+  }
+
+  // clone() ne modifie pas req : il en rend une COPIE modifiée.
+  const requeteAuthentifiee = req.clone({
+    setHeaders: { Authorization: `Bearer ${jeton}` }
+  });
+
+  return next(requeteAuthentifiee);
+};
+```
+
+| Option de `clone()` | Effet |
+|---|---|
+| `url` | Remplace l'URL de la requête |
+| `setHeaders: { … }` | Ajoute ou remplace des en-têtes, en gardant les autres |
+| `headers` | Remplace **tout** le jeu d'en-têtes |
+| `setParams: { … }` | Ajoute des paramètres de requête (`?cle=valeur`) |
+| `body` | Remplace le corps envoyé |
+
+Une variante utile du même mécanisme : préfixer les URL relatives par l'adresse du serveur, pour que plus aucun service ne connaisse le nom d'hôte du backend.
+
+```typescript
+const BASE_URL = 'https://api.exemple.com';
+
+export const baseUrlInterceptor: HttpInterceptorFn = (req, next) => {
+  // Toute requête ne va pas forcément vers notre API : on ne réécrit que
+  // ce qu'on reconnaît, et on laisse le reste passer intact.
+  if (!req.url.startsWith('/api')) {
+    return next(req);
+  }
+  return next(req.clone({ url: BASE_URL + req.url }));
+};
+```
+
+### Dans le projet
+
+**État transverse** — [`carnet-contact_frontend/src/app/services/etat-http.ts`](../carnet-contact_frontend/src/app/services/etat-http.ts)
+
+Nouveau service, sans aucune notion de contact : il ne porte que le compteur de requêtes et le dernier message d'erreur.
+
+```typescript
+@Injectable({ providedIn: 'root' })
+export class EtatHttpService {
+  private requetesEnCours = signal(0);
+  readonly chargement = computed(() => this.requetesEnCours() > 0);
+
+  private erreurSignal = signal<string | null>(null);
+  readonly erreur = this.erreurSignal.asReadonly();
+
+  debutRequete(): void { this.requetesEnCours.update(n => n + 1); }
+  finRequete(): void { this.requetesEnCours.update(n => Math.max(0, n - 1)); }
+  signalerErreur(message: string): void { this.erreurSignal.set(message); }
+  effacerErreur(): void { this.erreurSignal.set(null); }
+}
+```
+
+**Les trois intercepteurs** — [`interceptors/chargement-interceptor.ts`](../carnet-contact_frontend/src/app/interceptors/chargement-interceptor.ts), [`interceptors/erreur-interceptor.ts`](../carnet-contact_frontend/src/app/interceptors/erreur-interceptor.ts), [`interceptors/base-url-interceptor.ts`](../carnet-contact_frontend/src/app/interceptors/base-url-interceptor.ts)
+
+**Enregistrement** — [`app.config.ts`](../carnet-contact_frontend/src/app/app.config.ts)
+
+```typescript
+provideHttpClient(
+  withInterceptors([
+    baseUrlInterceptor,      // réécrit l'URL avant que les autres la voient
+    chargementInterceptor,
+    erreurInterceptor        // son catchError passe avant le finalize ci-dessus
+  ])
+)
+```
+
+**Service métier allégé** — [`services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts)
+
+Le service est passé de 90 à 59 lignes. Il ne reste dans chaque méthode que ce qui lui est propre : l'appel, la valeur de repli, la mise à jour du signal.
+
+```typescript
+// URL relative : baseUrlInterceptor y ajoute l'adresse du backend.
+private apiUrl = '/api/contacts';
+
+chargerContacts(): void {
+  this.http.get<Contact[]>(this.apiUrl).pipe(
+    catchError(() => of([]))       // lecture : une liste vide reste exploitable
+  ).subscribe(data => this.contactsSignal.set(data));
+}
+
+addContact(contact: Contact): void {
+  this.http.post<Contact>(this.apiUrl, contact).pipe(
+    catchError(() => EMPTY)        // écriture : ne pas toucher l'état local
+  ).subscribe(contactCree => {
+    this.contactsSignal.update(liste => [...liste, contactCree]);
+  });
+}
+```
+
+**Coquille** — [`app.ts`](../carnet-contact_frontend/src/app/app.ts) et [`app.html`](../carnet-contact_frontend/src/app/app.html)
+
+`App` n'injecte plus `ContactService` du tout : un affichage transverse dépend maintenant d'un état transverse.
+
+```typescript
+protected etatHttp = inject(EtatHttpService);
+```
+
+```html
+@if (etatHttp.chargement()) { <p class="chargement">Chargement…</p> }
+@if (etatHttp.erreur(); as message) { <p class="erreur">{{ message }}</p> }
+```
+
+**Boutons** — [`contact-form.ts`](../carnet-contact_frontend/src/app/components/contact-form/contact-form.ts), [`contact-list.ts`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.ts), [`contact-edit.ts`](../carnet-contact_frontend/src/app/pages/contact-edit/contact-edit.ts)
+
+```typescript
+private etatHttp = inject(EtatHttpService);
+chargement = this.etatHttp.chargement;
+```
+
+Effet de bord notable : `ContactForm` n'injecte plus `ContactService` (il n'y recourait que pour le chargement, et remonte l'ajout au parent par `output()`), son import a donc disparu.
+
+### Ce qu'un intercepteur ne doit pas faire
+
+- **Avaler une erreur sans la relancer**, sauf intention explicite : les appelants croiraient leur requête réussie.
+- **Porter de la logique métier.** Si le code a besoin de savoir *quelle* fonctionnalité a déclenché la requête, il est au mauvais endroit.
+- **Oublier `next()`** ou ne pas retourner son résultat : la requête ne part jamais, sans aucun message d'erreur.
+- **Supposer qu'il ne tourne que dans le navigateur.** Avec le SSR (section 13), les intercepteurs s'exécutent aussi côté serveur, sur le `GET` initial : rien qui touche `window` ou `localStorage` ne doit y figurer sans précaution.
+
+## 18. Backend Spring Boot
 
 Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
 
@@ -1929,7 +2235,7 @@ Le principe est exactement le même que l'injection de dépendances vue côté A
 
 ---
 
-## 18. Git et GitHub
+## 19. Git et GitHub
 
 Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
 
@@ -1986,7 +2292,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 
 ---
 
-## 19. Pense-bête de dépannage
+## 20. Pense-bête de dépannage
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
@@ -2010,13 +2316,19 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Une liste ne se met pas à jour après un ajout ou une suppression faits par un autre composant | Chaque composant possède sa propre copie de la donnée dans un signal local | Déplacer la donnée dans le service (signal partagé, voir section 12) plutôt que de recharger la page |
 | Le formulaire d'édition reste vide alors que la fiche s'affiche bien | Formulaire pré-rempli à la construction, avant l'arrivée des données du signal partagé | Pré-remplir dans un `effect()` qui réagit au signal, pas dans le `constructor` directement (section 14) |
 | Le formulaire d'édition efface la saisie en cours de temps en temps | Un `effect()` de pré-remplissage se réexécute à chaque changement du signal (ex : rechargement de la liste) | Ajouter un drapeau booléen : ne `patchValue()` qu'une seule fois |
-| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 17) ; regarder la ligne `preflight` dans l'onglet Réseau |
+| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 18) ; regarder la ligne `preflight` dans l'onglet Réseau |
 | Modification enregistrée côté serveur mais la fiche affiche encore l'ancienne valeur | Le signal partagé n'a pas été mis à jour après le `PUT` | Dans le service, `.update()` avec `.map()` pour remplacer l'élément modifié par la réponse du serveur |
 | `NG0203` / `inject() must be called from an injection context` sur un `effect()` | `effect()` appelé hors constructeur / hors champ de classe | Le déplacer dans le `constructor` du composant |
 | Backend éteint ou en erreur : liste vide, formulaire sans réaction, aucun message | `.subscribe()` n'a qu'un callback de succès, l'erreur du flux n'est traitée nulle part | `.pipe(catchError(...))` dans le service + un signal d'erreur affiché (section 15) |
 | `catchError` provoque `Type 'void' is not assignable to type 'ObservableInput<...>'` | Le callback de `catchError` ne retourne pas d'Observable | Retourner `of(valeurDeRepli)`, `EMPTY`, ou `throwError(() => err)` |
-| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 17) |
+| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 18) |
 | Une modification du code (nouveau signal, `delay()` ajouté...) reste sans effet dans le navigateur | Le rechargement à chaud de `ng serve` n'a pas pris (fréquent sous Windows / avec le SSR) | `Ctrl + C` sur `ng serve`, `npm start`, attendre `bundle generation complete`, puis `Ctrl + Shift + R` dans le navigateur |
 | L'indicateur de chargement ne s'affiche jamais au rafraîchissement de la page | Le `GET` initial part côté serveur (SSR) : `chargement` passe à `true` puis `false` avant l'envoi du HTML | Normal ; l'indicateur n'apparaît que sur les requêtes déclenchées par un clic (ajout, modif, suppression), section 16 |
 | L'indicateur de chargement reste allumé après une erreur réseau | `set(false)` placé seulement dans `.subscribe(next)`, qui ne s'exécute pas en cas d'erreur | Le mettre dans `finalize()` du `.pipe()`, qui s'exécute quelle que soit l'issue (section 16) |
 | Un contact en double après un double-clic sur « Ajouter » | Le bouton reste actif pendant la requête, chaque clic renvoie un `POST` | `[disabled]="form.invalid \|\| chargement()"` sur le bouton, en lisant le signal `chargement` du service |
+| Une requête ne part jamais : rien dans l'onglet Réseau, aucune erreur en console | Un intercepteur n'appelle pas `next(req)`, ou n'en retourne pas le résultat | Vérifier que chaque intercepteur fait bien `return next(...)` sur **tous** ses chemins, sorties anticipées comprises (section 17) |
+| L'échec d'une requête n'atteint plus le `catchError` du service | Le `catchError` d'un intercepteur retourne `of(...)` ou `EMPTY` : il « avale » l'erreur | Terminer par `return throwError(() => erreur)` pour la relancer (section 17) |
+| L'indicateur de chargement s'éteint alors qu'une requête tourne encore | Un booléen partagé ne suffit plus dès que deux requêtes se chevauchent | Compter les requêtes en vol et dériver le booléen : `computed(() => compteur() > 0)` (section 17) |
+| `req.url = ...` ou `req.headers.set(...)` dans un intercepteur reste sans effet | Un `HttpRequest` est immuable par conception | Passer par `req.clone({ url: ..., setHeaders: ... })` et transmettre la **copie** à `next()` (section 17) |
+| `404` sur toutes les requêtes après passage aux URL relatives | L'intercepteur de base URL ne reconnaît pas le préfixe, ou n'est pas placé en premier dans `withInterceptors` | Vérifier le test `req.url.startsWith('/api')` et l'ordre du tableau (section 17) |
+| `NG0203` / `inject() must be called from an injection context` dans un intercepteur | `inject()` appelé à l'intérieur d'un callback (`catchError`, `finalize`) au lieu du corps de la fonction | Appeler `inject()` en tête de l'intercepteur et garder la référence dans une `const` |
