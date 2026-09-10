@@ -30,6 +30,17 @@ export class ContactService {
     });
   }
 
+  modifierContact(contact: Contact): void {
+    this.http.put<Contact>(`${this.apiUrl}/${contact.id}`, contact).subscribe(contactMaj => {
+      // .map() renvoie un NOUVEAU tableau (immutabilité) : le contact
+      // modifié est remplacé par la réponse du serveur, les autres
+      // restent inchangés.
+      this.contactsSignal.update(liste =>
+        liste.map(c => (c.id === contactMaj.id ? contactMaj : c))
+      );
+    });
+  }
+
   deleteContact(id: number): void {
     this.http.delete<void>(`${this.apiUrl}/${id}`).subscribe(() => {
       // Mise à jour locale : inutile de redemander la liste au serveur,

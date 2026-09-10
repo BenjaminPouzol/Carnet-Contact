@@ -27,6 +27,15 @@ public class ContactController {
         return contactRepository.save(contact);
     }
 
+    @PutMapping("/{id}")
+    public Contact updateContact(@PathVariable Long id, @RequestBody Contact contact) {
+        // On impose l'id de l'URL au contact reçu : le client ne peut pas
+        // modifier un autre enregistrement que celui désigné par l'URL.
+        // save() fait un UPDATE quand l'id correspond à une ligne existante.
+        contact.setId(id);
+        return contactRepository.save(contact);
+    }
+
     @DeleteMapping("/{id}")
     public void deleteContact(@PathVariable Long id) {
         contactRepository.deleteById(id);

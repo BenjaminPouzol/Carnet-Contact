@@ -1,0 +1,15 @@
+<h2>Modifier le contact</h2>
+
+@if (contact(); as c) {
+  <form [formGroup]="contactForm" (ngSubmit)="onSubmit()">
+    <div><input formControlName="nom" placeholder="Nom" /></div>
+    <div><input formControlName="prenom" placeholder="Prénom" /></div>
+    <div><input formControlName="email" placeholder="Email" /></div>
+    <div><input formControlName="telephone" placeholder="Téléphone" /></div>
+
+    <button type="submit" [disabled]="contactForm.invalid">Enregistrer</button>
+    <a [routerLink]="['/contact', c.id]">Annuler</a>
+  </form>
+} @else {
+  <p>Contact introuvable (ou en cours de chargement).</p>
+}
