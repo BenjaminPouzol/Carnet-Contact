@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { ContactService } from './services/contact';
+import { EtatHttpService } from './services/etat-http';
 
 @Component({
   selector: 'app-root',
@@ -11,7 +11,9 @@ import { ContactService } from './services/contact';
 export class App {
   protected readonly title = signal('carnet-contact');
 
-  // La coquille est le bon endroit pour un affichage transverse comme
-  // une bannière d'erreur : elle est visible quelle que soit la page.
-  protected contactService = inject(ContactService);
+  // La coquille n'a plus besoin du service MÉTIER : ses deux bannières sont
+  // alimentées par les intercepteurs, via ce service transverse. Un affichage
+  // transverse dépend désormais d'un état transverse — plus de ContactService
+  // injecté ici juste pour lire deux signaux qui ne parlaient pas de contacts.
+  protected etatHttp = inject(EtatHttpService);
 }

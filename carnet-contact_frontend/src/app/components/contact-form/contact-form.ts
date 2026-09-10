@@ -1,6 +1,6 @@
 import { Component, inject, output } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ContactService } from '../../services/contact';
+import { EtatHttpService } from '../../services/etat-http';
 import { Contact } from '../../contact.model';
 
 @Component({
@@ -11,10 +11,11 @@ import { Contact } from '../../contact.model';
 })
 export class ContactForm {
   private fb = inject(FormBuilder);
-  private contactService = inject(ContactService);
+  private etatHttp = inject(EtatHttpService);
 
-  // Référence vers le signal du service : true pendant une requête HTTP.
-  chargement = this.contactService.chargement;
+  // Référence vers le signal du service transverse : true tant qu'au moins
+  // une requête HTTP est en vol (alimenté par chargementInterceptor).
+  chargement = this.etatHttp.chargement;
 
   contactAjoute = output<Contact>();
 

@@ -2,6 +2,7 @@ import { Component, OnInit, computed, effect, inject } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ContactService } from '../../services/contact';
+import { EtatHttpService } from '../../services/etat-http';
 import { Contact } from '../../contact.model';
 
 @Component({
@@ -15,6 +16,7 @@ export class ContactEdit implements OnInit {
   private router = inject(Router);
   private fb = inject(FormBuilder);
   private contactService = inject(ContactService);
+  private etatHttp = inject(EtatHttpService);
 
   private id = Number(this.route.snapshot.paramMap.get('id'));
 
@@ -24,7 +26,7 @@ export class ContactEdit implements OnInit {
   );
 
   // true pendant une requête HTTP : sert à désactiver le bouton Enregistrer.
-  chargement = this.contactService.chargement;
+  chargement = this.etatHttp.chargement;
 
   contactForm = this.fb.group({
     nom: ['', Validators.required],

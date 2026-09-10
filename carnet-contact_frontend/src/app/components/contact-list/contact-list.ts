@@ -1,6 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ContactService } from '../../services/contact';
+import { EtatHttpService } from '../../services/etat-http';
 
 @Component({
   selector: 'app-contact-list',
@@ -10,10 +11,12 @@ import { ContactService } from '../../services/contact';
 })
 export class ContactList implements OnInit {
   private contactService = inject(ContactService);
+  private etatHttp = inject(EtatHttpService);
 
-  // Références vers les signaux du service, pas des copies.
+  // Références vers les signaux des services, pas des copies. Les données
+  // viennent du service métier, l'état de chargement du service transverse.
   contacts = this.contactService.contacts;
-  chargement = this.contactService.chargement;
+  chargement = this.etatHttp.chargement;
 
   ngOnInit(): void {
     this.contactService.chargerContacts();
