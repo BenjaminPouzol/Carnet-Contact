@@ -153,10 +153,27 @@ code source en parallèle. Convention ajoutée à CLAUDE.md. **Appliquée à tou
 le document** (sections 2 à 14) — 25 encadrés au total. À maintenir pour
 chaque nouvelle notion.
 
+### Partie 6 — Gestion des erreurs HTTP
+Objectif : ne plus échouer en silence quand le backend est éteint ou renvoie
+une erreur. Prolonge le service de la Partie 3.
+
+25. `ContactService` : chaque appel passe par `.pipe(catchError(...))`.
+    `chargerContacts` retombe sur `of([])` (liste vide de repli) ; les
+    écritures retournent `EMPTY` (l'état local n'est pas touché en cas
+    d'échec). Un second signal `erreur` (privé + `readonly`) porte le
+    dernier message
+26. `App` (la coquille) injecte `ContactService` et affiche une bannière
+    tant que `erreur()` n'est pas `null` — affichage transverse assumé
+
+Notions ajoutées au support : **section 15 « Gestion des erreurs HTTP
+(`catchError`) »** — `.pipe()`, `catchError`, `of()` / `EMPTY` /
+`throwError`, la forme objet de `.subscribe({ next, error })`, le signal
+d'état d'erreur. Sections Backend/Git/Pense-bête renumérotées 16/17/18.
+
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
-- Gestion d'erreurs propre sur les appels HTTP (`catchError` de RxJS)
+- Indicateur de chargement pendant les requêtes (signal `chargement`)
 - Intercepteur HTTP
 - Pagination et recherche côté backend
 - Tests unitaires (fichiers `.spec.ts` déjà générés par le CLI, jamais 

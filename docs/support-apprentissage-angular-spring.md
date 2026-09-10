@@ -20,9 +20,10 @@ Document de référence détaillé, organisé par notion. Chaque section combine
 12. [Signal partagé alimenté par HttpClient](#12-signal-partagé-alimenté-par-httpclient)
 13. [Routing Angular](#13-routing-angular)
 14. [Modification d'une ressource (PUT, formulaire pré-rempli)](#14-modification-dune-ressource-put-formulaire-pré-rempli)
-15. [Backend Spring Boot](#15-backend-spring-boot)
-16. [Git et GitHub](#16-git-et-github)
-17. [Pense-bête de dépannage](#17-pense-bête-de-dépannage)
+15. [Gestion des erreurs HTTP (`catchError`)](#15-gestion-des-erreurs-http-catcherror)
+16. [Backend Spring Boot](#16-backend-spring-boot)
+17. [Git et GitHub](#17-git-et-github)
+18. [Pense-bête de dépannage](#18-pense-bête-de-dépannage)
 
 ---
 
@@ -1074,6 +1075,8 @@ Ce dernier point est le meilleur indicateur de réussite du pattern. Un composan
 | `.subscribe()` écrit dans un composant | Supprimé | Retiré à l'étape 4 : plus aucun composant ne s'abonne |
 | `window.location.reload()` après une écriture | Supprimé | Retiré à l'étape 3, dès que le signal partagé propage seul les changements |
 
+> Les extraits « Dans le projet » de cette section montrent le service tel qu'il était à la fin de la migration. Chaque méthode a ensuite reçu un `.pipe(catchError(...))` pour gérer les échecs réseau — voir section 15.
+
 ---
 
 ## 13. Routing Angular
@@ -1517,7 +1520,152 @@ onSubmit(): void {
 
 Le template [`contact-edit.html`](../carnet-contact_frontend/src/app/pages/contact-edit/contact-edit.html) est le même formulaire réactif que `contact-form.html`, avec un bouton « Enregistrer » et un lien « Annuler » qui ramène à la fiche.
 
-## 15. Backend Spring Boot
+> `modifierContact` a ensuite reçu un `.pipe(catchError(...))`, comme les autres méthodes du service — voir section 15.
+
+## 15. Gestion des erreurs HTTP (`catchError`)
+
+### Le problème : l'échec silencieux
+
+Un `.subscribe(valeur => …)` ne passe qu'une seule fonction : celle du **succès**. Or un Observable a trois issues possibles — émettre une valeur, émettre une **erreur**, ou se terminer. Une requête HTTP échoue pour toutes sortes de raisons : serveur éteint, réponse `500`, `404`, réseau coupé, requête refusée. Sans traitement de l'erreur, rien ne l'attrape : elle finit en erreur non gérée dans la console, et l'utilisateur ne voit **rien** — une liste vide, un bouton sans effet apparent.
+
+Gérer l'erreur, c'est décider ce qui doit se passer à sa place : afficher un message, retomber sur une valeur par défaut, ou réessayer.
+
+### `.pipe()` : insérer des opérateurs avant l'abonnement
+
+`.pipe()` est un « tube » que le flux de données traverse avant d'arriver au `.subscribe()`. On y place des **opérateurs** RxJS qui transforment, filtrent ou — c'est le cas ici — interceptent les erreurs du flux.
+
+```typescript
+this.http.get<T[]>(url).pipe(
+  operateur1(),
+  operateur2(),
+).subscribe(valeur => { /* ... */ });
+```
+
+### `catchError` : attraper l'erreur et fournir un flux de remplacement
+
+`catchError` ne s'active que si le flux part en erreur. Sa contrainte est stricte : **il doit retourner un Observable**, car il remplace le flux cassé par un flux de secours. Trois retours possibles selon l'intention :
+
+| Retour de `catchError` | Effet sur le `.subscribe()` | Quand l'utiliser |
+|---|---|---|
+| `of(valeurParDefaut)` | Reçoit `valeurParDefaut` comme si tout allait bien | Une valeur de repli a du sens (liste vide, objet neutre) |
+| `EMPTY` | Ne s'exécute pas : le flux se termine sans rien émettre | Un échec d'écriture — on ne veut surtout pas modifier l'état local |
+| `throwError(() => err)` | Reçoit l'erreur (déclenche son callback `error`) | On préfère gérer l'erreur plus loin dans la chaîne |
+
+`of(x)` et `EMPTY` viennent de `rxjs` : `of(x)` crée un Observable qui émet `x` puis se termine ; `EMPTY` est un Observable qui se termine immédiatement sans rien émettre.
+
+```typescript
+import { of, EMPTY, catchError } from 'rxjs';
+
+// Lecture : une liste vide vaut mieux qu'un plantage
+chargerTout(): void {
+  this.http.get<T[]>(this.apiUrl).pipe(
+    catchError(() => {
+      this.erreurSignal.set('Chargement impossible.');
+      return of([]);          // le .subscribe() reçoit []
+    })
+  ).subscribe(data => this.itemsSignal.set(data));
+}
+
+// Écriture : en cas d'échec, ne pas toucher à l'état local
+ajouter(item: T): void {
+  this.http.post<T>(this.apiUrl, item).pipe(
+    catchError(() => {
+      this.erreurSignal.set("Ajout impossible.");
+      return EMPTY;           // le .subscribe() ne s'exécute pas
+    })
+  ).subscribe(cree => this.itemsSignal.update(l => [...l, cree]));
+}
+```
+
+### La forme complète de `.subscribe()`
+
+Sans `catchError`, on peut aussi traiter l'erreur directement dans le `.subscribe()`, qui accepte un objet à trois clés :
+
+```typescript
+this.http.get<T[]>(url).subscribe({
+  next: data => { /* succès */ },
+  error: err => { /* échec */ },
+  complete: () => { /* flux terminé (rare à utiliser pour du HTTP) */ },
+});
+```
+
+`catchError` et le callback `error` ne s'excluent pas. La différence : `catchError` agit **dans le flux** (il peut fournir une valeur de repli, réessayer, transformer l'erreur), alors que le callback `error` ne fait que **réagir** une fois l'erreur arrivée au bout. On utilise `catchError` quand le service doit rester maître de ce qui remplace l'échec.
+
+### Exposer l'erreur à l'affichage : un signal d'état
+
+Le service tient un second signal, à côté de celui des données : le dernier message d'erreur, ou `null` s'il n'y a rien à signaler. Même pattern d'encapsulation que pour les données (privé modifiable + vitrine `readonly`).
+
+```typescript
+private erreurSignal = signal<string | null>(null);
+readonly erreur = this.erreurSignal.asReadonly();
+```
+
+Chaque méthode le remet à `null` en début d'appel (on efface l'erreur précédente) et le renseigne dans son `catchError`. Un composant affiche ensuite une bannière conditionnée à ce signal.
+
+```html
+@if (service.erreur(); as message) {
+  <p class="erreur">{{ message }}</p>
+}
+```
+
+Une bannière d'erreur (comme un indicateur de chargement) est un affichage **transverse** : il concerne toutes les pages, pas une en particulier. Le composant racine — la coquille du routing, section 13 — est l'endroit légitime pour l'héberger, même s'il doit pour cela injecter le service métier.
+
+### Dans le projet
+
+**Service** — [`carnet-contact_frontend/src/app/services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts)
+
+```typescript
+import { EMPTY, of, catchError } from 'rxjs';
+
+private erreurSignal = signal<string | null>(null);
+readonly erreur = this.erreurSignal.asReadonly();
+
+chargerContacts(): void {
+  this.erreurSignal.set(null);
+  this.http.get<Contact[]>(this.apiUrl).pipe(
+    catchError(() => {
+      this.erreurSignal.set('Impossible de charger les contacts. Le serveur est-il démarré ?');
+      return of([]);
+    })
+  ).subscribe(data => this.contactsSignal.set(data));
+}
+
+addContact(contact: Contact): void {
+  this.erreurSignal.set(null);
+  this.http.post<Contact>(this.apiUrl, contact).pipe(
+    catchError(() => {
+      this.erreurSignal.set("Impossible d'ajouter le contact.");
+      return EMPTY;
+    })
+  ).subscribe(contactCree => {
+    this.contactsSignal.update(liste => [...liste, contactCree]);
+  });
+}
+```
+
+`modifierContact` et `deleteContact` suivent le même schéma (retour `EMPTY`).
+
+**Coquille** — [`app.ts`](../carnet-contact_frontend/src/app/app.ts) et [`app.html`](../carnet-contact_frontend/src/app/app.html)
+
+```typescript
+// app.ts — la coquille injecte le service pour lire son signal d'erreur
+protected contactService = inject(ContactService);
+```
+
+```html
+<!-- app.html -->
+<h1>{{ title() }}</h1>
+@if (contactService.erreur(); as message) {
+  <p class="erreur">{{ message }}</p>
+}
+<router-outlet />
+```
+
+### Pourquoi le POST met plus longtemps à signaler l'échec que le GET
+
+Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 16). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
+
+## 16. Backend Spring Boot
 
 Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
 
@@ -1661,7 +1809,7 @@ Le principe est exactement le même que l'injection de dépendances vue côté A
 
 ---
 
-## 16. Git et GitHub
+## 17. Git et GitHub
 
 Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
 
@@ -1718,7 +1866,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 
 ---
 
-## 17. Pense-bête de dépannage
+## 18. Pense-bête de dépannage
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
@@ -1742,6 +1890,9 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Une liste ne se met pas à jour après un ajout ou une suppression faits par un autre composant | Chaque composant possède sa propre copie de la donnée dans un signal local | Déplacer la donnée dans le service (signal partagé, voir section 12) plutôt que de recharger la page |
 | Le formulaire d'édition reste vide alors que la fiche s'affiche bien | Formulaire pré-rempli à la construction, avant l'arrivée des données du signal partagé | Pré-remplir dans un `effect()` qui réagit au signal, pas dans le `constructor` directement (section 14) |
 | Le formulaire d'édition efface la saisie en cours de temps en temps | Un `effect()` de pré-remplissage se réexécute à chaque changement du signal (ex : rechargement de la liste) | Ajouter un drapeau booléen : ne `patchValue()` qu'une seule fois |
-| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 15) ; regarder la ligne `preflight` dans l'onglet Réseau |
+| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 16) ; regarder la ligne `preflight` dans l'onglet Réseau |
 | Modification enregistrée côté serveur mais la fiche affiche encore l'ancienne valeur | Le signal partagé n'a pas été mis à jour après le `PUT` | Dans le service, `.update()` avec `.map()` pour remplacer l'élément modifié par la réponse du serveur |
 | `NG0203` / `inject() must be called from an injection context` sur un `effect()` | `effect()` appelé hors constructeur / hors champ de classe | Le déplacer dans le `constructor` du composant |
+| Backend éteint ou en erreur : liste vide, formulaire sans réaction, aucun message | `.subscribe()` n'a qu'un callback de succès, l'erreur du flux n'est traitée nulle part | `.pipe(catchError(...))` dans le service + un signal d'erreur affiché (section 15) |
+| `catchError` provoque `Type 'void' is not assignable to type 'ObservableInput<...>'` | Le callback de `catchError` ne retourne pas d'Observable | Retourner `of(valeurDeRepli)`, `EMPTY`, ou `throwError(() => err)` |
+| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 16) |
