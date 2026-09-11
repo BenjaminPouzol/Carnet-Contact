@@ -4835,6 +4835,70 @@ PrimeNG génère ses couleurs sous forme de variables CSS (`--p-primary-600`, �
 
 **Dans le projet** — [`app.config.ts`](../carnet-contact_frontend/src/app/app.config.ts) et [`styles.css`](../carnet-contact_frontend/src/styles.css)
 
+### `primitive` et `semantic` : PrimeNG n'impose aucune couleur
+
+Une question revient vite quand on adopte une bibliothèque : *suis-je obligé d'accepter ses couleurs ?* Pour PrimeNG, la réponse est non — et le mécanisme mérite d'être compris, parce qu'il se retrouve dans la plupart des systèmes de design.
+
+Un preset se divise en deux étages :
+
+| Étage | Contient | Exemple |
+|---|---|---|
+| `primitive` | Les palettes **brutes**, désignées par un nom de couleur | `red`, `blue`, `emerald` — chacune de 50 à 950 |
+| `semantic` | Les **rôles**, qui pointent vers ces palettes | `primary`, `formField`, `colorScheme` |
+
+Les composants ne connaissent jamais une valeur en dur. Un bouton `severity="danger"` d'Aura est décrit ainsi :
+
+```json
+"danger": {
+  "background":      "light-dark({red.500}, {red.400})",
+  "hoverBackground": "light-dark({red.600}, {red.300})",
+  "activeBackground": "light-dark({red.700}, {red.200})",
+  "color":           "light-dark(#ffffff, {red.950})"
+}
+```
+
+Il ne connaît que le **nom** `red` et des crans. Redéfinir cette palette suffit donc à ce que tous les boutons, étiquettes et messages d'erreur de l'application adoptent notre rouge :
+
+```typescript
+definePreset(Aura, {
+  // On remplace la palette BRUTE : tout ce qui dit « danger » ou « error »
+  // quelque part dans la bibliothèque suit automatiquement.
+  primitive: {
+    red: { 50: '#fff1f3', 100: '#ffe2e6', /* … */ 500: '#ff1f3d', 600: '#ed0026', /* … */ }
+  },
+  // On remplace le ROLE : « primary » ne pointe plus vers la palette par
+  // defaut d'Aura (emerald), mais vers nos propres valeurs.
+  semantic: {
+    primary: { 50: '#eff5ff', /* … */ 600: '#0b5fff', /* … */ }
+  }
+});
+```
+
+Ce qui **est** imposé, en revanche, c'est la **forme** : il faut fournir les onze nuances. PrimeNG puise dans des crans précis pour dériver les états — `600` au survol, `700` à l'appui, `400`/`300` en mode sombre, `950` pour le texte posé dessus. N'en donner qu'une seule casserait tous ces états.
+
+> La distinction générale à retenir : **un jeton primitif est une couleur, un jeton sémantique est une intention.** On change la première pour changer la teinte partout ; on change le second pour changer *ce que la teinte veut dire*.
+
+Les deux étages produisent chacun leurs variables CSS, ce qui permet d'y brancher son propre système :
+
+```css
+:root {
+  --bleu:  var(--p-primary-600);   /* jeton semantique */
+  --rouge: var(--p-red-500);       /* jeton primitif   */
+}
+```
+
+À partir de là, un `<p-button severity="danger">` et un `<button class="danger">` écrit à la main sortent rigoureusement identiques — il n'existe plus qu'un seul rouge dans le projet.
+
+> Vérifier plutôt que supposer : ces variables se lisent hors du navigateur, ce qui évite de découvrir un nom erroné à l'écran.
+>
+> ```js
+> const T = require('@primeuix/styled');
+> T.Theme.setTheme({ preset: monPreset, options: { prefix: 'p' } });
+> console.log(T.Theme.getCommon().primitive.css);  // --p-red-500:#ff1f3d …
+> ```
+
+**Dans le projet** — [`app.config.ts`](../carnet-contact_frontend/src/app/app.config.ts) et [`styles.css`](../carnet-contact_frontend/src/styles.css)
+
 ### Les couches de cascade (`@layer`)
 
 Voici le piège qui coûte le plus de temps quand on introduit une bibliothèque dans un projet déjà stylé.
@@ -5083,6 +5147,64 @@ Un point qui surprend au début : **une couleur n'a pas de valeur absolue, elle 
 :root            { --bleu: var(--p-primary-600); }
 [data-theme="sombre"] { --bleu: var(--p-primary-400); }
 ```
+
+### Quand une variable partagée ne convient plus aux deux thèmes
+
+Cette montée dans les nuances claires a un effet de bord qu'on ne voit qu'à l'écran. L'en-tête de l'application réutilisait `--bleu` et `--rouge` pour son dégradé — parfaitement logique. Mais en mode sombre ces deux variables valent désormais `primary-400` et `red-400` : la bande, qui porte du texte blanc, virait au **pastel** et l'identité visuelle se diluait.
+
+La cause est instructive : `--bleu` et `--rouge` répondent à la question « quelle teinte est lisible **sur le fond de la page** ? ». L'en-tête, lui, pose une autre question — « quelle teinte porte du texte blanc ? ». Deux questions différentes ne peuvent pas partager une seule variable.
+
+```css
+/* La bande a donc sa PROPRE variable, declaree une fois par theme. */
+:root {
+  --entete-degrade: linear-gradient(100deg,
+      var(--p-primary-700) 0%, var(--p-primary-600) 42%, var(--p-red-500) 105%);
+}
+
+[data-theme="sombre"] {
+  /* Un cran plus profond : la bande doit trancher SUR le fond sombre, pas s'y
+     fondre. L'inverse exact du raisonnement applique a --bleu. */
+  --entete-degrade: linear-gradient(100deg,
+      var(--p-primary-800) 0%, var(--p-primary-600) 45%, var(--p-red-600) 105%);
+}
+```
+
+```css
+/* Le composant ne connait plus qu'un nom, et ignore lequel des deux themes
+   est actif. */
+.entete { background: var(--entete-degrade); }
+```
+
+Le signe qui doit alerter : **une variable qu'on est tenté de redéfinir localement « juste pour ce cas-là »**. C'est en général qu'elle répond à deux questions distinctes, et qu'il en faut deux.
+
+### Un dégradé de fond, et pourquoi il doit être fixe
+
+```css
+body {
+  background: var(--fond-degrade);
+
+  /* fixed : le degrade est ancre a la FENETRE, pas au document. Sans cela il
+     se redessinerait sur toute la hauteur de la page — les lueurs seraient
+     diluees sur un long contenu, et se decaleraient au defilement. */
+  background-attachment: fixed;
+
+  /* Pour qu'il couvre l'ecran meme quand la page est courte. */
+  min-height: 100vh;
+}
+```
+
+```css
+/* Deux radial-gradient tres etales, empiles sur la couleur de fond. L'idee est
+   de TEINTER la page, pas de la peindre : le texte doit rester parfaitement
+   lisible et les cartes se detacher. */
+--fond-degrade:
+  radial-gradient(120vw 90vh at 5% -15%,   rgb(11 95 255 / 0.38), transparent 62%),
+  radial-gradient(110vw 85vh at 100% 112%, rgb(255 31 61 / 0.32), transparent 60%),
+  var(--fond);
+```
+
+Le dosage ne se transpose pas d'un thème à l'autre — sur un fond sombre, une teinte faible ne se voit tout simplement pas, exactement comme pour les ombres. C'est une constante de cette section : **le clair et le sombre ne se dosent jamais avec les mêmes valeurs.**
+
 
 ### Pourquoi un attribut plutôt qu'une classe
 
@@ -5805,3 +5927,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Un compte rétrogradé garde ses droits quelques minutes | Le rôle voyage dans le jeton, valable jusqu'à son expiration | Comportement attendu du sans-état ; révoquer les jetons de rafraîchissement et vérifier l'état réel en base pour les actions destructrices (section 29) |
 | `curl -d '{"emoji":"👍"}'` renvoie 400 sous Git Bash alors que le serveur est correct | Le shell Windows altère les caractères non-ASCII de la ligne de commande | Écrire le corps dans un fichier et utiliser `--data-binary @fichier.json`, ou échapper en séquences JSON (`\uD83D\uDC4D`) |
 | Un résultat contredit le code qu'on vient d'écrire | Ce n'est pas ce code qui tourne : ancienne instance encore démarrée sur le port | `netstat -ano \| grep :8080` avant de conclure ; redémarrer, ou utiliser un autre port |
+| Les `p-button severity="danger"` ne sont pas de la bonne teinte de rouge | La sévérité pointe vers la palette nommée `red`, restée celle d'Aura | Redéfinir `primitive.red` dans le preset — les onze nuances, pas une seule (section 30) |
+| Une variable de thème rend mal dans un seul endroit de l'interface | Elle répond en réalité à deux questions différentes (lisible sur le fond / portant du texte blanc) | Lui donner sa propre variable, déclarée une fois par thème (section 31) |
+| Le dégradé de fond se décale ou se dilue au défilement | Il est ancré au document et non à la fenêtre | `background-attachment: fixed` (section 31) |
+| Un `data-theme` posé à la main dans `index.html` reste sans effet | Le script anti-FOUC puis `ThemeService` recalculent et écrasent l'attribut | C'est le comportement voulu : passer par `localStorage`, la préférence système, ou la bascule de l'interface (section 31) |

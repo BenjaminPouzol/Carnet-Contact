@@ -670,12 +670,69 @@ deux sous-sections ajoutées à la section 26 (fabriques de test, et les pièges
 d'attente dans les tests). 17 entrées ajoutées au pense-bête. Sections
 Backend/Git/Pense-bête renumérotées 33/34/35.
 
+
+### Partie 13 — Le rouge vif restauré, et la première vérification à l'écran
+Retour de l'utilisateur après la Partie 12 : le rouge vif avait disparu, et avec
+lui une partie de l'identité visuelle. Proposition de sa part : un fond mêlant
+le bleu vif et le rouge vif plutôt qu'un blanc plat.
+
+100. Diagnostic : le rouge n'avait pas été supprimé, il avait été **noyé**. Les
+     `severity="danger"` de PrimeNG pointent vers une palette nommée `red`,
+     restée celle d'Aura (`#ef4444`, un rouge brique) — pas vers notre `--rouge`
+101. Question posée par l'utilisateur : « si PrimeNG impose un code couleur,
+     suis-le et dis-le moi. » Réponse vérifiée dans le code de la bibliothèque :
+     **PrimeNG n'impose aucune couleur**. Un bouton danger est décrit
+     `light-dark({red.500}, {red.400})` — il ne connaît qu'un NOM de palette
+102. Ce qui EST imposé, c'est la **forme** : les onze nuances, car la
+     bibliothèque puise dans des crans précis (600 au survol, 700 à l'appui,
+     400/300 en sombre, 950 pour le texte). Distinction générale retenue : un
+     jeton `primitive` est une couleur, un jeton `semantic` est une intention
+103. Vérification hors navigateur des variables réellement émises
+     (`Theme.getCommon().primitive.css`) plutôt que de supposer un nom :
+     `--p-red-500:#ff1f3d` confirmé avant d'écrire la moindre règle CSS
+104. Fond de page : deux `radial-gradient` très étalés, bleu en haut à gauche et
+     rouge en bas à droite, `background-attachment: fixed` pour qu'ils restent
+     ancrés à la fenêtre
+
+#### Première vérification visuelle du projet
+105. Capture d'écran en Chrome headless contre le serveur de développement —
+     **la première fois depuis le début du projet que l'interface est
+     réellement regardée**. Deux défauts invisibles autrement en sont sortis
+106. Le dégradé de fond était si transparent qu'il lisait blanc : opacités
+     portées de 0.16/0.14 à 0.38/0.32
+107. Dans l'en-tête, le rouge était calé à 160 % — hors zone visible. On ne
+     voyait donc qu'un mélange bleu-rouge, un violet terne, et la couleur
+     d'accent n'apparaissait jamais. Ramené à 105 %
+108. En mode sombre, l'en-tête virait au pastel : il réutilisait `--bleu` et
+     `--rouge`, qui montent volontairement dans les nuances claires pour rester
+     lisibles sur fond noir. Or la bande porte du texte blanc — deux questions
+     différentes ne peuvent pas partager une variable. D'où `--entete-degrade`,
+     déclarée une fois par thème
+109. Incident révélateur au passage : forcer `data-theme="sombre"` dans
+     `index.html` restait sans effet. Le script anti-FOUC, puis `ThemeService`,
+     recalculent et écrasent l'attribut — comportement exactement voulu, mais
+     qu'il a fallu comprendre pour pouvoir tester le thème
+
+#### Vérifications faites
+- `ng build` propre, 70 tests frontend au vert
+- Page de connexion capturée dans les deux thèmes, avant et après correction
+- Les deux bidouilles temporaires ayant servi à forcer le thème sombre
+  (`index.html`, `theme.ts`) ont été restaurées et vérifiées par `git diff`
+- Toujours pas vérifié : les pages authentifiées (contacts, messages,
+  administration), qui demandent une session et donc un vrai pilotage du
+  navigateur
+
+Notions ajoutées au support : sous-section **« `primitive` et `semantic` :
+PrimeNG n'impose aucune couleur »** en section 30, et deux sous-sections en
+section 31 (variable partagée devenue inadaptée aux deux thèmes, dégradé de fond
+
+fixe). 4 entrées ajoutées au pense-bête.
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
-- Parcours complet dans un vrai navigateur — la seule vérification jamais faite
-  depuis le début du projet, et devenue la plus urgente : le mode sombre, les
-  composants PrimeNG et la palette de réactions n'ont jamais été vus à l'écran
+- Pilotage réel du navigateur pour voir les pages AUTHENTIFIÉES : contacts,
+  messages, administration. La page de connexion est désormais vérifiée dans les
+  deux thèmes, mais tout ce qui demande une session reste invisible
 - Messagerie : passer du sondage à un vrai temps réel (WebSocket ou SSE), ce qui
   supprimerait les requêtes inutiles quand rien ne change
 - Persistance réelle : H2 est en mémoire, tout disparaît au redémarrage — et

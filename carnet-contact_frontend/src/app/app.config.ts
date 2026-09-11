@@ -17,8 +17,7 @@ import { rafraichissementInterceptor } from './interceptors/rafraichissement-int
  * Le thème PrimeNG, ajusté aux couleurs du carnet.
  *
  * `definePreset` part d'un thème existant (Aura) et n'en redéfinit que ce qu'on
- * veut changer — ici la palette « primary », pour retrouver le bleu de
- * l'application. Repartir de zéro obligerait à décrire les centaines de jetons
+ * veut changer. Repartir de zéro obligerait à décrire les centaines de jetons
  * dont Aura a déjà des valeurs raisonnables.
  *
  * Les 50 à 950 sont des NUANCES : PrimeNG s'en sert pour dériver tout seul les
@@ -27,6 +26,36 @@ import { rafraichissementInterceptor } from './interceptors/rafraichissement-int
  * (section 21), en beaucoup plus complet.
  */
 const themeCarnet = definePreset(Aura, {
+  /**
+   * `primitive` : les palettes BRUTES, désignées par un nom de couleur.
+   * `semantic` : les RÔLES, qui pointent vers ces palettes.
+   *
+   * PrimeNG n'impose aucune couleur. Sa sévérité « danger » est écrite
+   * `light-dark({red.500}, {red.400})` — elle ne connaît qu'un NOM de palette.
+   * Redéfinir `red` ici suffit donc à ce que tous les boutons, étiquettes et
+   * messages d'erreur de l'application adoptent notre rouge.
+   *
+   * En revanche, la FORME est imposée : il faut fournir les onze nuances, car
+   * PrimeNG puise dans des crans précis (600 au survol, 700 à l'appui, 400/300
+   * en mode sombre, 950 pour le texte posé dessus). N'en donner qu'une casserait
+   * tous ces états.
+   */
+  primitive: {
+    red: {
+      50: '#fff1f3',
+      100: '#ffe2e6',
+      200: '#ffc9d0',
+      300: '#ff9daa',
+      400: '#ff5c75',
+      500: '#ff1f3d',
+      600: '#ed0026',
+      700: '#c80020',
+      800: '#a5061f',
+      900: '#8a0c21',
+      950: '#4c000e'
+    }
+  },
+
   semantic: {
     primary: {
       50: '#eff5ff',

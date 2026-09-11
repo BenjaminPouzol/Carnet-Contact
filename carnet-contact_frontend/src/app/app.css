@@ -1,9 +1,9 @@
 /* --- En-tete ------------------------------------------------------------- */
 
 .entete {
-  /* Degrade des deux couleurs de l'application : le bleu domine largement,
-     le rouge n'apparait qu'en fin de course. */
-  background: linear-gradient(100deg, var(--bleu-fonce) 0%, var(--bleu) 55%, var(--rouge) 160%);
+  /* Le degrade lui-meme est declare dans styles.css, une fois par theme :
+     le clair et le sombre n'en veulent pas le meme dosage. */
+  background: var(--entete-degrade);
   color: #fff;
   box-shadow: 0 2px 12px rgb(19 28 43 / 0.18);
 }

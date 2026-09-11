@@ -34,12 +34,36 @@
 
   /* Rouge petant : couleur d'ACCENT, volontairement rare. Reservee a ce qui
      detruit (supprimer, se deconnecter) et a ce qui alerte (erreurs). Un
-     rouge partout ne veut plus rien dire ; un rouge rare se remarque. */
-  --rouge: #ff1f3d;
-  --rouge-fonce: #c00e28;
-  --rouge-pale: #ffe9ec;
+     rouge partout ne veut plus rien dire ; un rouge rare se remarque.
+
+     Comme le bleu, il vient desormais des jetons PrimeNG : la palette `red`
+     est redefinie dans app.config.ts, et les deux systemes partagent donc
+     exactement le meme rouge. Un bouton p-button severity="danger" et un
+     <button class="danger"> ecrit a la main sortent identiques. */
+  --rouge: var(--p-red-500);
+  --rouge-fonce: var(--p-red-700);
+  --rouge-pale: var(--p-red-50);
 
   --fond: #f4f6fb;
+
+  /* Le fond n'est pas un aplat : les deux couleurs de l'identite y diffusent
+     depuis deux coins opposes. Des radial-gradient tres etales et tres
+     transparents — l'idee est de TEINTER la page, pas de la peindre : le texte
+     doit rester parfaitement lisible, et les cartes blanches se detacher. */
+  --fond-degrade:
+    radial-gradient(120vw 90vh at 5% -15%, rgb(11 95 255 / 0.38), transparent 62%),
+    radial-gradient(110vw 85vh at 100% 112%, rgb(255 31 61 / 0.32), transparent 60%),
+    var(--fond);
+
+  /* L'en-tete a son PROPRE degrade, et ne reutilise pas --bleu / --rouge.
+     Pourquoi : en mode sombre ces deux variables montent volontairement dans
+     les nuances claires, pour rester lisibles sur fond noir. La bande, elle,
+     porte du texte blanc — elle doit rester profonde et saturee dans les deux
+     themes, sinon elle vire au pastel et l'identite se dilue. */
+  --entete-degrade: linear-gradient(100deg,
+      var(--p-primary-700) 0%,
+      var(--p-primary-600) 42%,
+      var(--p-red-500) 105%);
   --carte: #ffffff;
   --texte: #131c2b;
   --texte-doux: #5d6b83;
@@ -75,14 +99,33 @@
   --bleu-vif: var(--p-primary-500);
   --bleu-pale: #16233d;
 
-  --rouge: #ff5a70;
-  --rouge-fonce: #ff8a99;
+  /* En mode sombre, PrimeNG puise lui-meme dans red.400/300 : on suit le meme
+     raisonnement que pour le bleu — une couleur se lit CONTRE son fond, et le
+     rouge a pleine saturation devient agressif sur noir. */
+  --rouge: var(--p-red-400);
+  --rouge-fonce: var(--p-red-300);
   --rouge-pale: #3a1720;
 
   /* Pas de noir pur : un #000 derriere du texte blanc produit un contraste
      eblouissant et fatigant. Les interfaces sombres soignees s'arretent a un
      gris tres fonce. */
   --fond: #0e1420;
+
+  /* Meme composition, mais les lueurs sont plus marquees : sur un fond sombre,
+     une teinte faible ne se voit tout simplement pas. C'est le pendant de la
+     regle sur les ombres plus bas — le clair et le sombre ne se dosent pas de
+     la meme facon. */
+  --fond-degrade:
+    radial-gradient(120vw 90vh at 5% -15%, rgb(11 95 255 / 0.30), transparent 62%),
+    radial-gradient(110vw 85vh at 100% 112%, rgb(255 31 61 / 0.24), transparent 60%),
+    var(--fond);
+
+  /* Un cran plus profond qu'en clair : la bande doit trancher SUR le fond
+     sombre, pas s'y fondre. */
+  --entete-degrade: linear-gradient(100deg,
+      var(--p-primary-800) 0%,
+      var(--p-primary-600) 45%,
+      var(--p-red-600) 105%);
   --carte: #172033;
   --texte: #e6ebf5;
   --texte-doux: #9aa8c0;
@@ -142,7 +185,16 @@
     font-size: 16px;
     line-height: 1.55;
     color: var(--texte);
-    background: var(--fond);
+    background: var(--fond-degrade);
+
+    /* fixed : le degrade est ancre a la FENETRE, pas au document. Sans cela, il
+       se redessinerait sur toute la hauteur de la page — les lueurs seraient
+       diluees sur un long contenu, et se decaleraient au defilement. */
+    background-attachment: fixed;
+
+    /* Le degrade doit couvrir l'ecran meme quand la page est courte (la
+       connexion, par exemple), sans quoi il s'arreterait au bas du contenu. */
+    min-height: 100vh;
   }
 
   h1, h2, h3 {
