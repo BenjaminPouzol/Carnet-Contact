@@ -21,20 +21,48 @@
           }
         </a>
         <a routerLink="/profil" routerLinkActive="actif">Profil</a>
-      </nav>
 
-      <div class="compte">
-        @if (auth.utilisateur()?.photoUrl) {
-          <img class="avatar-mini" [src]="auth.utilisateur()!.photoUrl" alt="" />
-        } @else {
-          <span class="avatar-mini avatar-lettre">
-            {{ (auth.utilisateur()?.nomAffichage || '?').charAt(0).toUpperCase() }}
-          </span>
+        <!-- Le lien n'apparait que pour les administrateurs. Ce n'est PAS une
+             protection — la route a ses gardes, et l'API son propre controle
+             (voir admin-guard.ts) : c'est juste qu'on n'affiche pas une porte
+             a qui n'a pas la cle. -->
+        @if (auth.estAdmin()) {
+          <a routerLink="/admin" routerLinkActive="actif">
+            <i class="pi pi-shield" aria-hidden="true"></i>
+            Administration
+          </a>
         }
-        <span class="compte-nom">{{ auth.utilisateur()?.nomAffichage }}</span>
-        <button type="button" class="danger" (click)="deconnexion()">Déconnexion</button>
-      </div>
+      </nav>
     }
+
+    <div class="zone-droite">
+      <!-- La bascule vit HORS du bloc « connecte » : le theme est un confort de
+           lecture, il doit etre accessible des la page de connexion. -->
+      <button
+        type="button"
+        class="bascule-theme"
+        [attr.aria-pressed]="theme.sombre()"
+        [attr.aria-label]="theme.sombre() ? 'Passer en thème clair' : 'Passer en thème sombre'"
+        [title]="theme.sombre() ? 'Thème clair' : 'Thème sombre'"
+        (click)="theme.basculer()">
+        <i class="pi" [class.pi-sun]="theme.sombre()" [class.pi-moon]="!theme.sombre()"
+           aria-hidden="true"></i>
+      </button>
+
+      @if (auth.connecte()) {
+        <div class="compte">
+          @if (auth.utilisateur()?.photoUrl) {
+            <img class="avatar-mini" [src]="auth.utilisateur()!.photoUrl" alt="" />
+          } @else {
+            <span class="avatar-mini avatar-lettre">
+              {{ (auth.utilisateur()?.nomAffichage || '?').charAt(0).toUpperCase() }}
+            </span>
+          }
+          <span class="compte-nom">{{ auth.utilisateur()?.nomAffichage }}</span>
+          <button type="button" class="danger" (click)="deconnexion()">Déconnexion</button>
+        </div>
+      }
+    </div>
   </div>
 </header>
 

@@ -1,0 +1,143 @@
+<div class="entete-admin">
+  <div>
+    <h2>Administration</h2>
+    <p class="muet resume">
+      {{ comptes().length }} compte{{ comptes().length > 1 ? 's' : '' }} ·
+      {{ nombreAdmins() }} administrateur{{ nombreAdmins() > 1 ? 's' : '' }} ·
+      {{ nombreDesactives() }} désactivé{{ nombreDesactives() > 1 ? 's' : '' }}
+    </p>
+  </div>
+
+  <input
+    pInputText
+    type="search"
+    class="champ-recherche"
+    placeholder="Filtrer par nom ou email…"
+    aria-label="Filtrer les comptes"
+    [formControl]="champRecherche" />
+</div>
+
+<!--
+  p-table de PrimeNG plutôt qu'un <table> écrit à la main : il apporte le tri
+  par colonne, l'état responsive et l'accessibilité sans code de notre part.
+  C'est exactement le genre de composant où une bibliothèque paie — beaucoup
+  de comportements attendus, aucun n'étant spécifique à notre métier.
+
+  Les templates (pTemplate) décrivent CHAQUE partie du tableau : on garde donc
+  la main complète sur le rendu de chaque cellule.
+-->
+<p-table
+  [value]="comptesFiltres()"
+  [loading]="chargement()"
+  dataKey="id"
+  sortField="dateInscription"
+  [sortOrder]="1"
+  styleClass="p-datatable-sm tableau-comptes"
+  [tableStyle]="{ 'min-width': '46rem' }">
+
+  <ng-template pTemplate="header">
+    <tr>
+      <th pSortableColumn="nomAffichage">Compte <p-sortIcon field="nomAffichage" /></th>
+      <th pSortableColumn="role">Rôle <p-sortIcon field="role" /></th>
+      <th pSortableColumn="actif">État <p-sortIcon field="actif" /></th>
+      <th pSortableColumn="nombreContacts" class="colonne-nombre">Contacts <p-sortIcon field="nombreContacts" /></th>
+      <th pSortableColumn="nombreMessages" class="colonne-nombre">Messages <p-sortIcon field="nombreMessages" /></th>
+      <th pSortableColumn="dateInscription">Inscrit le <p-sortIcon field="dateInscription" /></th>
+      <th class="colonne-actions">Actions</th>
+    </tr>
+  </ng-template>
+
+  <ng-template pTemplate="body" let-compte>
+    <tr [class.ligne-inactive]="!compte.actif">
+      <td>
+        <div class="cellule-compte">
+          @if (compte.photoUrl) {
+            <p-avatar [image]="compte.photoUrl" shape="circle" size="normal" />
+          } @else {
+            <p-avatar
+              [label]="compte.nomAffichage.charAt(0).toUpperCase()"
+              shape="circle"
+              size="normal"
+              styleClass="avatar-lettre" />
+          }
+          <div class="identite">
+            <strong>
+              {{ compte.nomAffichage }}
+              @if (compte.estMoi) { <span class="muet moi">(vous)</span> }
+            </strong>
+            <span class="muet email">{{ compte.email }}</span>
+          </div>
+        </div>
+      </td>
+
+      <td>
+        <!-- p-tag : une pastille colorée selon la « sévérité ». Les couleurs
+             viennent du thème, donc elles suivent le mode sombre toutes seules. -->
+        <p-tag
+          [value]="compte.role === 'ADMIN' ? 'Administrateur' : 'Utilisateur'"
+          [severity]="compte.role === 'ADMIN' ? 'warn' : 'secondary'" />
+      </td>
+
+      <td>
+        <p-tag
+          [value]="compte.actif ? 'Actif' : 'Désactivé'"
+          [severity]="compte.actif ? 'success' : 'danger'" />
+      </td>
+
+      <td class="colonne-nombre">{{ compte.nombreContacts }}</td>
+      <td class="colonne-nombre">{{ compte.nombreMessages }}</td>
+      <td class="muet">{{ compte.dateInscription | date: 'dd/MM/yyyy' }}</td>
+
+      <td class="colonne-actions">
+        <!--
+          Les actions sont désactivées sur sa PROPRE ligne : se rétrograder, se
+          désactiver ou se supprimer soi-même ferait perdre l'accès au panel
+          dans la seconde. Le serveur refuse déjà ces trois cas ; les griser
+          ici évite d'avoir à essayer pour l'apprendre.
+        -->
+        <div class="actions">
+          <p-button
+            [icon]="compte.role === 'ADMIN' ? 'pi pi-user-minus' : 'pi pi-user-plus'"
+            severity="secondary"
+            [text]="true"
+            [rounded]="true"
+            [disabled]="compte.estMoi || chargement()"
+            [pTooltip]="compte.role === 'ADMIN' ? 'Retirer le rôle admin' : 'Promouvoir admin'"
+            [ariaLabel]="compte.role === 'ADMIN' ? 'Rétrograder' : 'Promouvoir'"
+            (onClick)="basculerRole(compte)" />
+
+          <p-button
+            [icon]="compte.actif ? 'pi pi-lock' : 'pi pi-lock-open'"
+            severity="secondary"
+            [text]="true"
+            [rounded]="true"
+            [disabled]="compte.estMoi || chargement()"
+            [ariaLabel]="compte.actif ? 'Désactiver' : 'Réactiver'"
+            (onClick)="basculerActif(compte)" />
+
+          <p-button
+            icon="pi pi-trash"
+            severity="danger"
+            [text]="true"
+            [rounded]="true"
+            [disabled]="compte.estMoi || chargement()"
+            ariaLabel="Supprimer le compte"
+            (onClick)="demanderSuppression(compte)" />
+        </div>
+      </td>
+    </tr>
+  </ng-template>
+
+  <ng-template pTemplate="emptymessage">
+    <tr>
+      <td colspan="7" class="muet aucun">
+        Aucun compte ne correspond à ce filtre.
+      </td>
+    </tr>
+  </ng-template>
+</p-table>
+
+<!-- Le dialogue de confirmation vit ici, mais son contenu est fourni au moment
+     du clic par ConfirmationService. Un seul dialogue sert donc toutes les
+     lignes du tableau. -->
+<p-confirmDialog />

@@ -41,6 +41,11 @@ export class SessionService {
   // conséquence de la présence d'un jeton.
   readonly connecte = computed(() => this.jetonSignal() !== null);
 
+  // Idem pour « administrateur » : c'est une lecture du compte, pas un état
+  // à maintenir en parallèle. Deux sources qui pourraient se désynchroniser
+  // valent toujours moins qu'une seule dont on dérive.
+  readonly estAdmin = computed(() => this.utilisateurSignal()?.role === 'ADMIN');
+
   constructor() {
     // Au démarrage, on restaure la session laissée par la visite précédente.
     // Sans cela, un simple F5 déconnecterait l'utilisateur.

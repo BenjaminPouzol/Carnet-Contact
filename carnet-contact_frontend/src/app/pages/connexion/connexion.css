@@ -79,7 +79,7 @@
 }
 
 .criteres li.satisfait {
-  color: #0d7a3e;
+  color: var(--succes);
   font-weight: 500;
 }
 

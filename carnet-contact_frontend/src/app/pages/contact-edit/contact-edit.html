@@ -6,30 +6,30 @@
       <div class="grille">
         <div>
           <label for="nom">Nom</label>
-          <input id="nom" formControlName="nom" />
+          <input pInputText id="nom" formControlName="nom" />
         </div>
         <div>
           <label for="prenom">Prénom</label>
-          <input id="prenom" formControlName="prenom" />
+          <input pInputText id="prenom" formControlName="prenom" />
         </div>
         <div>
           <label for="email">Email</label>
-          <input id="email" type="email" formControlName="email" />
+          <input pInputText id="email" type="email" formControlName="email" />
         </div>
         <div>
           <label for="telephone">Téléphone</label>
-          <input id="telephone" formControlName="telephone" />
+          <input pInputText id="telephone" formControlName="telephone" />
         </div>
         <div>
           <label for="emailPro">Email professionnel</label>
-          <input id="emailPro" type="email" formControlName="emailPro" />
+          <input pInputText id="emailPro" type="email" formControlName="emailPro" />
           @if (contactForm.get('emailPro')?.invalid && contactForm.get('emailPro')?.touched) {
             <p class="erreur-champ">Format d'adresse invalide.</p>
           }
         </div>
         <div>
           <label for="photoUrl">Photo (URL)</label>
-          <input id="photoUrl" formControlName="photoUrl" />
+          <input pInputText id="photoUrl" formControlName="photoUrl" />
         </div>
       </div>
 
@@ -38,13 +38,17 @@
         @for (reseau of reseaux; track reseau.cle) {
           <div>
             <label [for]="'edit-' + reseau.cle">{{ reseau.nom }}</label>
-            <input [id]="'edit-' + reseau.cle" [formControlName]="reseau.cle" />
+            <input pInputText [id]="'edit-' + reseau.cle" [formControlName]="reseau.cle" />
           </div>
         }
       </div>
 
       <div class="actions">
-        <button type="submit" [disabled]="contactForm.invalid || chargement()">Enregistrer</button>
+        <p-button
+          type="submit"
+          icon="pi pi-check"
+          label="Enregistrer"
+          [disabled]="contactForm.invalid || chargement()" />
         <a class="annuler" [routerLink]="['/contact', c.id]">Annuler</a>
       </div>
     </form>

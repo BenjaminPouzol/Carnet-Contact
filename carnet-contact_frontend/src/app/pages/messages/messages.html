@@ -49,15 +49,89 @@
         @if (fil().length === 0) {
           <p class="muet">Aucun message. Écrivez le premier.</p>
         } @else {
-          @for (message of fil(); track message.id) {
-            <!-- La bulle change de côté et de couleur selon l'auteur : c'est
-                 le seul indice visuel qui permet de suivre un dialogue. -->
-            <div class="bulle" [class.de-moi]="estDeMoi(message.expediteur.id)">
-              <p class="texte">{{ message.contenu }}</p>
-              <!-- Le pipe date formate la chaîne ISO renvoyée par le backend.
-                   'short' donne date + heure dans le format local. -->
-              <span class="horodatage">{{ message.dateEnvoi | date: 'short' }}</span>
-            </div>
+          <!-- Deux @for imbriqués : les journées, puis les messages de chacune.
+               Le découpage est fait dans le composant (filParJour), pas ici —
+               un gabarit décrit ce qu'on voit, il ne calcule pas. -->
+          @for (jour of filParJour(); track jour.cle) {
+            <p class="separateur-jour"><span>{{ jour.libelle }}</span></p>
+
+            @for (message of jour.messages; track message.id) {
+              <!-- La bulle change de côté et de couleur selon l'auteur : c'est
+                   le seul indice visuel qui permet de suivre un dialogue. -->
+              <div class="bloc-bulle" [class.de-moi]="estDeMoi(message.expediteur.id)">
+                <div class="rangee-bulle">
+                  <div class="bulle">
+                    <p class="texte">{{ message.contenu }}</p>
+
+                    <span class="meta">
+                      <!-- Seule l'heure : la date est déjà dans le séparateur. -->
+                      <span class="horodatage">{{ message.dateEnvoi | date: 'HH:mm' }}</span>
+
+                      <!--
+                        L'accusé de lecture ne s'affiche que sur SES PROPRES
+                        messages. Sur un message reçu il ne voudrait rien dire :
+                        on sait forcément qu'on l'a lu, puisqu'on le regarde.
+                      -->
+                      @if (estDeMoi(message.expediteur.id)) {
+                        <span
+                          class="accuse"
+                          [class.accuse-lu]="message.lu"
+                          [title]="message.lu ? 'Lu' : 'Envoyé, pas encore lu'">
+                          <i class="pi" [class.pi-check]="!message.lu"
+                             [class.pi-check-circle]="message.lu" aria-hidden="true"></i>
+                          {{ message.lu ? 'Lu' : 'Envoyé' }}
+                        </span>
+                      }
+                    </span>
+                  </div>
+
+                  <!-- Le bouton vit DANS le flux, à côté de la bulle, et non en
+                       position absolue : `.fil` est une zone défilante, qui
+                       rognerait tout ce qui dépasse de ses bords. -->
+                  <button
+                    type="button"
+                    class="ouvrir-palette"
+                    [attr.aria-expanded]="paletteOuverte() === message.id"
+                    aria-label="Réagir à ce message"
+                    (click)="basculerPalette(message.id)">
+                    <i class="pi pi-face-smile" aria-hidden="true"></i>
+                  </button>
+                </div>
+
+                @if (paletteOuverte() === message.id) {
+                  <div class="palette" role="group" aria-label="Choisir une réaction">
+                    @for (emoji of emojis; track emoji) {
+                      <button type="button" class="choix-emoji" (click)="reagir(message, emoji)">
+                        {{ emoji }}
+                      </button>
+                    }
+                  </div>
+                }
+
+                <!--
+                  Les compteurs de réaction, sous la bulle. Cliquer sur un
+                  compteur existant est le geste le plus courant (« moi aussi »)
+                  et le plus rapide : il n'ouvre pas la palette, il envoie
+                  directement — et renvoyer le même emoji le retire.
+                -->
+                @if (message.reactions.length > 0) {
+                  <div class="reactions">
+                    @for (reaction of message.reactions; track reaction.emoji) {
+                      <button
+                        type="button"
+                        class="compteur-reaction"
+                        [class.par-moi]="reaction.parMoi"
+                        [attr.aria-pressed]="reaction.parMoi"
+                        [title]="reaction.parMoi ? 'Retirer ma réaction' : 'Réagir ainsi'"
+                        (click)="reagir(message, reaction.emoji)">
+                        <span class="emoji">{{ reaction.emoji }}</span>
+                        <span class="nombre">{{ reaction.nombre }}</span>
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+            }
           }
         }
       </div>

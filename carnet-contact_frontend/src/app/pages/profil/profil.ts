@@ -1,3 +1,5 @@
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
 import { Component, effect, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AuthService } from '../../services/auth';
@@ -6,7 +8,7 @@ import { NotificationService } from '../../services/notification';
 
 @Component({
   selector: 'app-profil',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, ButtonModule, InputTextModule],
   templateUrl: './profil.html',
   styleUrl: './profil.css'
 })

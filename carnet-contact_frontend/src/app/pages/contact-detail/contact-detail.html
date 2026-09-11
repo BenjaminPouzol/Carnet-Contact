@@ -37,7 +37,15 @@
     </dl>
 
     <div class="actions">
-      <a class="bouton-lien" [routerLink]="['/contact', c.id, 'modifier']">Modifier</a>
+      <!--
+        La directive pButton sur un <a>, plutôt que le composant <p-button>.
+        La raison est sémantique : ceci NAVIGUE vers une autre page, ce n'est
+        donc pas un bouton mais un lien — il doit pouvoir s'ouvrir dans un
+        nouvel onglet, se copier, s'indexer. La directive ne donne que
+        l'apparence ; l'élément reste ce qu'il doit être.
+      -->
+      <a pButton icon="pi pi-pencil" label="Modifier"
+         [routerLink]="['/contact', c.id, 'modifier']"></a>
       <a class="retour" routerLink="/">Retour à la liste</a>
     </div>
   </div>

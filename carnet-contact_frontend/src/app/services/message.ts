@@ -183,4 +183,40 @@ export class MessageService {
       this.filSignal.update(fil => [...fil, message]);
     });
   }
+
+  /**
+   * Pose, remplace ou retire une réaction sur un message.
+   *
+   * UN SEUL appel pour trois gestes différents — c'est le serveur qui décide
+   * lequel, en comparant l'emoji reçu à celui déjà posé par cette personne
+   * (voir MessageController.reagir). Le client n'a donc rien à savoir de
+   * l'état actuel : il dit « j'ai cliqué sur 👍 », et reçoit en retour le
+   * message à jour.
+   *
+   * L'alternative aurait été trois routes (POST/PUT/DELETE) et un client qui
+   * choisit. Mais c'est lui qui aurait alors tranché à partir d'un affichage
+   * peut-être périmé de quelques secondes — deux clics rapides, et les deux
+   * appels se contredisent. Laisser la décision au serveur rend l'opération
+   * IDEMPOTENTE : la rejouer donne le même résultat.
+   */
+  reagir(messageId: number, emoji: string): void {
+    this.http.put<Message>(`${this.apiUrl}/${messageId}/reaction`, { emoji }, {
+      context: contexte({ discret: true, libelle: 'Impossible d\'enregistrer la réaction' })
+    }).pipe(
+      catchError(() => EMPTY)
+    ).subscribe(message => this.remplacerDansLeFil(message));
+  }
+
+  /**
+   * Remplace un message du fil par sa version à jour.
+   *
+   * On ne recharge pas tout le fil : le sondage le fera de toute façon dans
+   * les cinq secondes. Mais attendre ces cinq secondes pour voir sa propre
+   * réaction apparaître donnerait une interface qui semble ne pas répondre.
+   */
+  private remplacerDansLeFil(message: Message): void {
+    this.filSignal.update(fil =>
+      fil.map(m => (m.id === message.id ? message : m))
+    );
+  }
 }

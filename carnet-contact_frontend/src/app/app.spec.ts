@@ -6,6 +6,7 @@ import { App } from './app';
 import { SessionService } from './services/session';
 import { MessageService } from './services/message';
 import { EtatHttpService } from './services/etat-http';
+import { unUtilisateur } from './donnees-test';
 
 /**
  * La coquille de l'application : en-tête, navigation, bannières transverses.
@@ -57,9 +58,7 @@ describe('App', () => {
   });
 
   it('affiche la navigation et le compte une fois connecté', async () => {
-    TestBed.inject(SessionService).ouvrir('jeton', 'rafraichissement', {
-      id: 1, email: 'alice@exemple.fr', nomAffichage: 'Alice'
-    });
+    TestBed.inject(SessionService).ouvrir('jeton', 'rafraichissement', unUtilisateur());
 
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

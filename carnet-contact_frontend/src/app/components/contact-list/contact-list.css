@@ -23,15 +23,21 @@
   margin-left: auto;
 }
 
-.zone-recherche button {
-  flex-shrink: 0;
-  padding: 0.4rem 0.8rem;
-  font-size: 0.85rem;
+/* p-iconfield est un composant : il ne s'etire pas tout seul dans un flex.
+   On lui dit de prendre la place restante, et on repercute la consigne sur
+   l'input qu'il contient. */
+.champ-recherche {
+  flex: 1;
+  min-width: 0;
+}
+
+:host ::ng-deep .champ-recherche input {
+  width: 100%;
 }
 
 /* Masque la croix native de <input type="search"> : on fournit notre propre
    bouton « Effacer », qui passe par le FormControl. */
-.champ-recherche::-webkit-search-cancel-button {
+:host ::ng-deep .champ-recherche input::-webkit-search-cancel-button {
   display: none;
 }
 
@@ -40,23 +46,12 @@
   font-size: 0.85rem;
 }
 
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
+/* Le paginateur de PrimeNG apporte son propre habillage : il ne reste qu'a le
+   centrer et a le decoller de la liste. Tout ce que remplaçaient les anciennes
+   regles .pagination / .position-page est desormais fourni par le composant. */
+:host ::ng-deep .pagination-contacts {
   margin-top: 1.25rem;
-}
-
-.pagination button {
-  padding: 0.45rem 0.9rem;
-  font-size: 0.88rem;
-}
-
-.position-page {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--texte-doux);
+  background: transparent;
 }
 
 .cartes-contacts {
@@ -137,11 +132,6 @@
   align-items: center;
   gap: 0.75rem;
   margin-left: auto;
-}
-
-.actions-fiche button {
-  padding: 0.4rem 0.8rem;
-  font-size: 0.85rem;
 }
 
 .vide {

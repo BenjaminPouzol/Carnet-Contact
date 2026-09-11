@@ -1,11 +1,39 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="utf-8">
-  <title>CarnetContact</title>
+  <title>Carnet de contacts</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!--
+    Le theme est pose AVANT le premier rendu, par ce petit script en ligne.
+
+    Sans lui, la page s'afficherait d'abord en clair — la valeur par defaut du
+    CSS — puis basculerait en sombre des qu'Angular aurait demarre et lu
+    localStorage. Ce clignotement blanc d'une fraction de seconde porte un nom,
+    le FOUC (« flash of unstyled content »), et il est particulierement penible
+    quand on a justement choisi le mode sombre.
+
+    Ce script doit rester EN LIGNE et dans le <head> : un fichier externe
+    serait telecharge trop tard, apres que le navigateur a commence a peindre.
+    Le try/catch couvre les navigateurs ou localStorage est interdit (navigation
+    privee, cookies bloques) — en cas de doute, on reste sur le theme clair.
+  -->
+  <script>
+    (function () {
+      try {
+        var memorise = localStorage.getItem('carnet.theme');
+        var theme = (memorise === 'clair' || memorise === 'sombre')
+          ? memorise
+          : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'sombre' : 'clair');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'clair');
+      }
+    })();
+  </script>
 </head>
 <body>
   <app-root></app-root>

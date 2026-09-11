@@ -6,35 +6,38 @@
     <div class="grille">
       <div>
         <label for="nom">Nom</label>
-        <input id="nom" formControlName="nom" placeholder="Dupont" />
+        <input pInputText id="nom" formControlName="nom" placeholder="Dupont" />
       </div>
       <div>
         <label for="prenom">Prénom</label>
-        <input id="prenom" formControlName="prenom" placeholder="Jean" />
+        <input pInputText id="prenom" formControlName="prenom" placeholder="Jean" />
       </div>
       <div>
         <label for="email">Email</label>
-        <input id="email" type="email" formControlName="email" placeholder="jean@exemple.fr" />
+        <input pInputText id="email" type="email" formControlName="email" placeholder="jean@exemple.fr" />
       </div>
       <div>
         <label for="telephone">Téléphone</label>
-        <input id="telephone" formControlName="telephone" placeholder="06 01 02 03 04" />
+        <input pInputText id="telephone" formControlName="telephone" placeholder="06 01 02 03 04" />
       </div>
     </div>
 
     <!-- Le reste est optionnel : replié par défaut pour ne pas noyer
          l'essentiel sous treize champs. -->
-    <button type="button" class="fantome bascule-details" (click)="basculerDetails()">
-      @if (detailsOuverts()) { − Masquer } @else { + Plus de détails }
-      <span class="muet">(email pro, photo, réseaux sociaux)</span>
-    </button>
+    <p-button
+      class="bascule-details"
+      severity="secondary"
+      [text]="true"
+      [icon]="detailsOuverts() ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"
+      [label]="detailsOuverts() ? 'Masquer les détails' : 'Plus de détails (email pro, photo, réseaux sociaux)'"
+      (onClick)="basculerDetails()" />
 
     @if (detailsOuverts()) {
       <div class="details">
         <div class="grille">
           <div>
             <label for="emailPro">Email professionnel</label>
-            <input id="emailPro" type="email" formControlName="emailPro"
+            <input pInputText id="emailPro" type="email" formControlName="emailPro"
                    placeholder="j.dupont@entreprise.fr" />
             <!-- L'erreur ne s'affiche qu'une fois le champ QUITTÉ (touched) :
                  signaler « email invalide » dès la première lettre tapée est
@@ -45,7 +48,7 @@
           </div>
           <div>
             <label for="photoUrl">Photo (URL)</label>
-            <input id="photoUrl" formControlName="photoUrl"
+            <input pInputText id="photoUrl" formControlName="photoUrl"
                    placeholder="https://exemple.fr/jean.jpg" />
           </div>
         </div>
@@ -61,7 +64,7 @@
           @for (reseau of reseaux; track reseau.cle) {
             <div>
               <label [for]="reseau.cle">{{ reseau.nom }}</label>
-              <input [id]="reseau.cle" [formControlName]="reseau.cle"
+              <input pInputText [id]="reseau.cle" [formControlName]="reseau.cle"
                      [placeholder]="'@pseudo'" />
             </div>
           }
@@ -69,8 +72,14 @@
       </div>
     }
 
-    <button type="submit" class="valider" [disabled]="contactForm.invalid || chargement()">
-      Ajouter
-    </button>
+    <!-- type="submit" est passé en attribut ordinaire : p-button le recopie sur
+         le <button> qu'il génère, donc le formulaire part toujours sur
+         (ngSubmit). -->
+    <p-button
+      type="submit"
+      styleClass="valider"
+      icon="pi pi-user-plus"
+      label="Ajouter"
+      [disabled]="contactForm.invalid || chargement()" />
   </form>
 </div>

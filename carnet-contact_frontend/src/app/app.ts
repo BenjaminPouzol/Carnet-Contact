@@ -4,6 +4,7 @@ import { EtatHttpService } from './services/etat-http';
 import { AuthService } from './services/auth';
 import { MessageService } from './services/message';
 import { NotificationService } from './services/notification';
+import { ThemeService } from './services/theme';
 
 @Component({
   selector: 'app-root',
@@ -18,6 +19,7 @@ export class App {
   protected auth = inject(AuthService);
   protected messages = inject(MessageService);
   protected notifications = inject(NotificationService);
+  protected theme = inject(ThemeService);
 
   constructor() {
     // La pastille de messages non lus doit être remplie dès qu'on est

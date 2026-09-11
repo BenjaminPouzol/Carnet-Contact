@@ -2,15 +2,26 @@
   <h2>Mes contacts</h2>
 
   <div class="zone-recherche">
-    <input
-      type="search"
-      class="champ-recherche"
-      placeholder="Rechercher un nom, un prénom, un email…"
-      aria-label="Rechercher un contact"
-      [formControl]="champRecherche" />
+    <!-- p-iconfield place une icône À L'INTÉRIEUR du champ, sans
+         positionnement manuel : l'icône devient un élément du champ, et le
+         texte saisi se décale tout seul pour ne pas passer dessous. -->
+    <p-iconfield class="champ-recherche">
+      <p-inputicon styleClass="pi pi-search" />
+      <input
+        pInputText
+        type="search"
+        placeholder="Rechercher un nom, un prénom, un email…"
+        aria-label="Rechercher un contact"
+        [formControl]="champRecherche" />
+    </p-iconfield>
 
     @if (recherche()) {
-      <button type="button" class="fantome" (click)="effacerRecherche()">Effacer</button>
+      <p-button
+        label="Effacer"
+        icon="pi pi-times"
+        severity="secondary"
+        [outlined]="true"
+        (onClick)="effacerRecherche()" />
     }
   </div>
 </div>
@@ -58,32 +69,36 @@
 
         <div class="actions-fiche">
           <app-reseaux-sociaux [contact]="contact" />
-          <button class="danger" (click)="supprimer(contact.id)" [disabled]="chargement()">
-            Supprimer
-          </button>
+          <p-button
+            icon="pi pi-trash"
+            label="Supprimer"
+            severity="danger"
+            [text]="true"
+            [disabled]="chargement()"
+            (onClick)="supprimer(contact.id)" />
         </div>
       </li>
     }
   </ul>
 
-  <!-- La navigation entre pages n'a de sens qu'à partir de deux pages. -->
+  <!--
+    p-paginator remplace les deux boutons « Précédent / Suivant » écrits à la
+    main. Ce qu'il apporte et qu'on n'avait pas : les numéros de page cliquables,
+    le saut au début ou à la fin, la gestion du clavier et les libellés lus par
+    les lecteurs d'écran.
+
+    Il ne s'affiche toujours qu'à partir de deux pages : un paginateur seul sur
+    une page unique n'informe de rien.
+
+    [first] est un INDEX D'ÉLÉMENT, pas un numéro de page — d'où le calcul.
+  -->
   @if (totalPages() > 1) {
-    <nav class="pagination" aria-label="Pagination des contacts">
-      <button
-        type="button"
-        (click)="pagePrecedente()"
-        [disabled]="premierePage() || chargement()">
-        ← Précédent
-      </button>
-
-      <span class="position-page">Page {{ page() + 1 }} sur {{ totalPages() }}</span>
-
-      <button
-        type="button"
-        (click)="pageSuivante()"
-        [disabled]="dernierePage() || chargement()">
-        Suivant →
-      </button>
-    </nav>
+    <p-paginator
+      [first]="page() * taillePage"
+      [rows]="taillePage"
+      [totalRecords]="total()"
+      [showFirstLastIcon]="true"
+      styleClass="pagination-contacts"
+      (onPageChange)="changerPage($event)" />
   }
 }

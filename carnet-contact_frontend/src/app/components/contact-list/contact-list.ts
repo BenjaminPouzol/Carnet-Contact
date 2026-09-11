@@ -6,10 +6,18 @@ import { debounceTime, distinctUntilChanged } from 'rxjs';
 import { ContactService } from '../../services/contact';
 import { EtatHttpService } from '../../services/etat-http';
 import { ReseauxSociaux } from '../reseaux-sociaux/reseaux-sociaux';
+import { PaginatorModule, PaginatorState } from 'primeng/paginator';
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
+import { IconFieldModule } from 'primeng/iconfield';
+import { InputIconModule } from 'primeng/inputicon';
 
 @Component({
   selector: 'app-contact-list',
-  imports: [RouterLink, ReactiveFormsModule, ReseauxSociaux],
+  imports: [
+    RouterLink, ReactiveFormsModule, ReseauxSociaux,
+    PaginatorModule, ButtonModule, InputTextModule, IconFieldModule, InputIconModule
+  ],
   templateUrl: './contact-list.html',
   styleUrl: './contact-list.css'
 })
@@ -23,10 +31,9 @@ export class ContactList implements OnInit {
   chargement = this.etatHttp.chargement;
 
   page = this.contactService.page;
+  taillePage = this.contactService.taillePage;
   total = this.contactService.total;
   totalPages = this.contactService.totalPages;
-  premierePage = this.contactService.premierePage;
-  dernierePage = this.contactService.dernierePage;
   recherche = this.contactService.recherche;
 
   /**
@@ -69,12 +76,17 @@ export class ContactList implements OnInit {
     this.contactService.deleteContact(id);
   }
 
-  pagePrecedente(): void {
-    this.contactService.allerPage(this.page() - 1);
-  }
-
-  pageSuivante(): void {
-    this.contactService.allerPage(this.page() + 1);
+  /**
+   * Le paginateur raisonne en INDEX D'ÉLÉMENT (`first` = le rang du premier
+   * contact affiché), là où notre service raisonne en NUMÉRO DE PAGE.
+   *
+   * La conversion se fait ici, à la frontière. C'est la règle générale : chaque
+   * monde garde son vocabulaire, et on traduit au point de contact — plutôt que
+   * de contaminer le service avec les unités d'un composant d'affichage.
+   */
+  changerPage(evenement: PaginatorState): void {
+    const premier = evenement.first ?? 0;
+    this.contactService.allerPage(Math.floor(premier / this.taillePage));
   }
 
   effacerRecherche(): void {

@@ -1,3 +1,5 @@
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
 import { Component, OnInit, effect, inject } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -7,7 +9,7 @@ import { Contact, RESEAUX } from '../../contact.model';
 
 @Component({
   selector: 'app-contact-edit',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, ButtonModule, InputTextModule],
   templateUrl: './contact-edit.html',
   styleUrl: './contact-edit.css'
 })

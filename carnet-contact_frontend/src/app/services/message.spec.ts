@@ -5,6 +5,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { MessageService } from './message';
 import { NotificationService } from './notification';
 import { Message } from '../message.model';
+import { unMessage, uneReaction, unUtilisateur } from '../donnees-test';
 
 /** L'intervalle du sondage des non-lus, tel que défini dans le service. */
 const INTERVALLE_NON_LUS_MS = 15000;
@@ -14,14 +15,11 @@ describe('MessageService — notification des nouveaux messages', () => {
   let backend: HttpTestingController;
   let notifications: NotificationService;
 
-  const bob = { id: 2, email: 'bob@exemple.fr', nomAffichage: 'Bob' };
-  const moi = { id: 1, email: 'alice@exemple.fr', nomAffichage: 'Alice' };
+  const bob = unUtilisateur({ id: 2, email: 'bob@exemple.fr', nomAffichage: 'Bob' });
+  const moi = unUtilisateur();
 
   function message(id: number, contenu: string): Message {
-    return {
-      id, expediteur: bob, destinataire: moi, contenu,
-      dateEnvoi: '2026-09-11T10:00:00Z', lu: false
-    };
+    return unMessage({ id, expediteur: bob, destinataire: moi, contenu });
   }
 
   /**
@@ -135,5 +133,87 @@ describe('MessageService — notification des nouveaux messages', () => {
     // expectOne échouerait s'il y avait deux requêtes en attente : c'est la
     // preuve que le garde-fou empêche bien d'empiler un second timer.
     backend.expectOne('/api/messages/non-lus').flush([]);
+  });
+});
+
+/**
+ * Second describe dans le même fichier : les réactions touchent le même
+ * service, mais n'ont besoin ni de minuteurs simulés ni du service de
+ * notification. Les séparer garde chaque mise en place minimale — un beforeEach
+ * qui prépare des choses inutiles au test rend celui-ci plus dur à lire.
+ */
+describe('MessageService — réactions', () => {
+  let service: MessageService;
+  let backend: HttpTestingController;
+
+  const bob = unUtilisateur({ id: 2, email: 'bob@exemple.fr', nomAffichage: 'Bob' });
+
+  /**
+   * suivreFil s'appuie sur timer(0, …) : le 0 veut dire « au prochain tour de
+   * boucle », pas « tout de suite ». Cette promesse vide rend la main au
+   * moteur JavaScript le temps que la requête parte réellement — sans elle,
+   * expectOne chercherait un appel pas encore émis.
+   */
+  const rendreLaMain = () => new Promise(resolve => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()]
+    });
+
+    service = TestBed.inject(MessageService);
+    backend = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    service.arreterSuiviFil();
+    backend.verify();
+  });
+
+  /**
+   * LE test qui compte : la réponse du serveur remplace le message DANS le fil,
+   * et lui seul.
+   *
+   * Sans ce remplacement, sa propre réaction n'apparaîtrait qu'au prochain tour
+   * de sondage — jusqu'à cinq secondes après le clic, ce qui donne une
+   * interface qui semble ignorer les clics.
+   */
+  it('remplace le message réagi sans toucher aux autres', async () => {
+    service.suivreFil(2);
+    await rendreLaMain();
+    backend.expectOne('/api/messages/2').flush([
+      unMessage({ id: 10, expediteur: bob, contenu: 'Salut' }),
+      unMessage({ id: 11, expediteur: bob, contenu: 'Ça va ?' })
+    ]);
+
+    service.reagir(10, '👍');
+
+    const requete = backend.expectOne('/api/messages/10/reaction');
+    expect(requete.request.method).toBe('PUT');
+    expect(requete.request.body).toEqual({ emoji: '👍' });
+
+    requete.flush(unMessage({
+      id: 10, expediteur: bob, contenu: 'Salut',
+      reactions: [uneReaction({ nombre: 1, parMoi: true })]
+    }));
+
+    const fil = service.fil();
+    expect(fil.length).toBe(2);
+    expect(fil[0].reactions).toEqual([{ emoji: '👍', nombre: 1, parMoi: true }]);
+    // Le voisin est intact.
+    expect(fil[1].reactions).toEqual([]);
+  });
+
+  it('laisse le fil inchangé si le serveur refuse l\'emoji', async () => {
+    service.suivreFil(2);
+    await rendreLaMain();
+    backend.expectOne('/api/messages/2')
+      .flush([unMessage({ id: 10, expediteur: bob })]);
+
+    service.reagir(10, '🍕');
+    backend.expectOne('/api/messages/10/reaction')
+      .flush({ message: 'Emoji non autorisé' }, { status: 400, statusText: 'Bad Request' });
+
+    expect(service.fil()[0].reactions).toEqual([]);
   });
 });

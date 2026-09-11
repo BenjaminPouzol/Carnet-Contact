@@ -1,8 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { SessionService } from './session';
+import { unUtilisateur } from '../donnees-test';
 
 describe('SessionService', () => {
-  const compte = { id: 1, email: 'alice@exemple.fr', nomAffichage: 'Alice' };
+  const compte = unUtilisateur();
 
   beforeEach(() => {
     localStorage.clear();

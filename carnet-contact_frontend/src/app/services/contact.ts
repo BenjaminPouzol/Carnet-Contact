@@ -43,6 +43,9 @@ export class ContactService {
   readonly premierePage = computed(() => this.pageSignal() === 0);
   readonly dernierePage = computed(() => this.pageSignal() >= this.totalPagesSignal() - 1);
 
+  /** Exposée pour le paginateur, qui a besoin de la taille d'une page. */
+  readonly taillePage = TAILLE_PAGE;
+
   /**
    * Le contact affiché par la page de détail ou d'édition.
    *

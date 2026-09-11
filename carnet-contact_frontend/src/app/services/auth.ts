@@ -18,6 +18,7 @@ export class AuthService {
   // seul service à injecter pour lire l'état ET agir dessus.
   readonly utilisateur = this.session.utilisateur;
   readonly connecte = this.session.connecte;
+  readonly estAdmin = this.session.estAdmin;
 
   /**
    * Ces deux méthodes RETOURNENT l'Observable au lieu de s'y abonner

@@ -18,12 +18,12 @@
   <form [formGroup]="formulaire" (ngSubmit)="onSubmit()" class="formulaire-profil">
     <div class="champ">
       <label for="nomAffichage">Nom affiché</label>
-      <input id="nomAffichage" formControlName="nomAffichage" placeholder="Votre nom" />
+      <input pInputText id="nomAffichage" formControlName="nomAffichage" placeholder="Votre nom" />
     </div>
 
     <div class="champ">
       <label for="photoUrl">Photo de profil (URL)</label>
-      <input id="photoUrl" formControlName="photoUrl" placeholder="https://exemple.fr/moi.jpg" />
+      <input pInputText id="photoUrl" formControlName="photoUrl" placeholder="https://exemple.fr/moi.jpg" />
     </div>
 
     <p class="muet email-fixe">
@@ -31,7 +31,11 @@
     </p>
 
     <div class="actions">
-      <button type="submit" [disabled]="formulaire.invalid || chargement()">Enregistrer</button>
+      <p-button
+        type="submit"
+        icon="pi pi-check"
+        label="Enregistrer"
+        [disabled]="formulaire.invalid || chargement()" />
       @if (enregistre()) {
         <span class="confirme">Profil enregistré</span>
       }
@@ -73,9 +77,10 @@
         Soyez prévenu à l'arrivée d'un message, même quand l'onglet n'est pas
         au premier plan.
       </p>
-      <button type="button" (click)="activerNotifications()">
-        Activer les notifications
-      </button>
+      <p-button
+        icon="pi pi-bell"
+        label="Activer les notifications"
+        (onClick)="activerNotifications()" />
     }
   }
 </div>

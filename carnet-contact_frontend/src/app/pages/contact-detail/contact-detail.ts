@@ -1,3 +1,4 @@
+import { ButtonModule } from 'primeng/button';
 import { Component, OnInit, inject } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ContactService } from '../../services/contact';
@@ -5,7 +6,7 @@ import { ReseauxSociaux } from '../../components/reseaux-sociaux/reseaux-sociaux
 
 @Component({
   selector: 'app-contact-detail',
-  imports: [RouterLink, ReseauxSociaux],
+  imports: [RouterLink, ReseauxSociaux, ButtonModule],
   templateUrl: './contact-detail.html',
   styleUrl: './contact-detail.css'
 })

@@ -1,3 +1,5 @@
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
 import { Component, inject, output, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { EtatHttpService } from '../../services/etat-http';
@@ -5,7 +7,7 @@ import { Contact, RESEAUX } from '../../contact.model';
 
 @Component({
   selector: 'app-contact-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, ButtonModule, InputTextModule],
   templateUrl: './contact-form.html',
   styleUrl: './contact-form.css'
 })

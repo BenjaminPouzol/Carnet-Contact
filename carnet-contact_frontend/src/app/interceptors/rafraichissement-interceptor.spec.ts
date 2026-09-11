@@ -6,6 +6,7 @@ import { authInterceptor } from './auth-interceptor';
 import { erreurInterceptor } from './erreur-interceptor';
 import { rafraichissementInterceptor } from './rafraichissement-interceptor';
 import { SessionService } from '../services/session';
+import { unUtilisateur } from '../donnees-test';
 
 /**
  * Le scénario le plus difficile à vérifier à la main : il faudrait attendre
@@ -21,7 +22,7 @@ describe('rafraichissementInterceptor', () => {
   let backend: HttpTestingController;
   let session: SessionService;
 
-  const compte = { id: 1, email: 'alice@exemple.fr', nomAffichage: 'Alice' };
+  const compte = unUtilisateur();
 
   beforeEach(() => {
     localStorage.clear();

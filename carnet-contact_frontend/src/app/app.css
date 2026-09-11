@@ -47,8 +47,38 @@
 .entete nav {
   display: flex;
   gap: 0.35rem;
-  /* Pousse le bloc « compte » a l'oppose de la navigation. */
-  margin-right: auto;
+}
+
+/* Cette zone absorbe tout l'espace libre a sa gauche : la navigation reste
+   collee a la marque, et tout ce qui suit part a droite. Elle vaut mieux qu'un
+   margin-right: auto sur la nav — celle-ci disparait quand on est deconnecte,
+   et l'alignement partirait avec elle. */
+.zone-droite {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+/* Bouton icone : fond transparent, il ne doit pas rivaliser avec la
+   deconnexion, seule action vraiment cliquable de l'en-tete. */
+.bascule-theme {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 1rem;
+  color: #fff;
+  background: rgb(255 255 255 / 0.14);
+  border: 1px solid rgb(255 255 255 / 0.25);
+  border-radius: 50%;
+  box-shadow: none;
+}
+
+.bascule-theme:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.28);
+  box-shadow: none;
 }
 
 .entete nav a {

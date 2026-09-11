@@ -1,0 +1,138 @@
+/* --- En-tete de la page -------------------------------------------------- */
+
+.entete-admin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.entete-admin h2 {
+  margin-bottom: 0.2rem;
+}
+
+.resume {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.champ-recherche {
+  /* width: 100% est impose a tous les input par styles.css : on le neutralise
+     ici, sinon le champ occuperait toute la largeur et casserait le flex. */
+  width: min(20rem, 100%);
+}
+
+/* --- Cellules du tableau ------------------------------------------------- */
+
+.cellule-compte {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+/* min-width: 0 autorise l'enfant a retrecir sous sa largeur de contenu :
+   sans lui, un email long elargirait la colonne au lieu d'etre tronque. */
+.identite {
+  display: grid;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.email {
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moi {
+  font-weight: 400;
+  font-size: 0.82rem;
+}
+
+.colonne-nombre {
+  text-align: right;
+  /* Les chiffres tabulaires ont tous la meme largeur : les nombres d'une
+     colonne s'alignent alors verticalement, comme dans un tableur. */
+  font-variant-numeric: tabular-nums;
+}
+
+.colonne-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.15rem;
+}
+
+.aucun {
+  padding: 1.5rem;
+  text-align: center;
+}
+
+/* --- Etat desactive ------------------------------------------------------ */
+
+/*
+  Une ligne grisee dit d'un coup d'oeil, sans lire l'etiquette, quels comptes
+  ne peuvent plus se connecter. L'etiquette « Desactive » reste la pour ceux
+  qui ne distinguent pas bien les nuances : la couleur ACCOMPAGNE l'information,
+  elle ne la porte jamais seule.
+*/
+.ligne-inactive .cellule-compte,
+.ligne-inactive .colonne-nombre {
+  opacity: 0.55;
+}
+
+/* --- Retouches sur les composants PrimeNG -------------------------------- */
+
+/*
+  ::ng-deep : pourquoi il faut en passer par la.
+
+  Angular « encapsule » le CSS d'un composant : a la compilation, il ajoute un
+  attribut unique (_ngcontent-abc) sur chaque element du GABARIT, et le colle a
+  chaque selecteur de la feuille. Une regle .cellule-compte devient en realite
+  .cellule-compte[_ngcontent-abc] — elle ne peut donc toucher que nos propres
+  elements, jamais ceux d'une autre page. C'est ce qui evite qu'une classe
+  banale comme .actions, definie dans deux pages, se marche dessus.
+
+  Mais les <table>, <tr> et <th> du tableau ne sont PAS dans notre gabarit :
+  c'est p-table qui les fabrique, avec son propre attribut. Nos selecteurs ne
+  les atteignent pas. ::ng-deep leve l'encapsulation pour ce qui suit, ce qui
+  redonne acces a l'interieur du composant enfant.
+
+  Le prix : la regle redevient globale. On la prefixe donc systematiquement par
+  :host, qui la limite a l'interieur de CE composant — sans quoi elle
+  s'appliquerait a toutes les tables de l'application.
+*/
+:host ::ng-deep .tableau-comptes .p-datatable-thead > tr > th {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+:host ::ng-deep .tableau-comptes .p-datatable-tbody > tr > td {
+  vertical-align: middle;
+}
+
+/* L'avatar sans photo reprend le degrade utilise par la page Profil : la meme
+   personne doit se reconnaitre d'un ecran a l'autre. */
+:host ::ng-deep .avatar-lettre {
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--bleu), var(--rouge));
+}
+
+@media (max-width: 640px) {
+  .entete-admin {
+    align-items: stretch;
+  }
+
+  .champ-recherche {
+    width: 100%;
+  }
+}
