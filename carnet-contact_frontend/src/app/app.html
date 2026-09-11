@@ -51,3 +51,25 @@
 
   <router-outlet />
 </main>
+
+<!-- Bandeaux de notification, empilés en bas à droite.
+     Ils vivent dans la coquille et non dans la page Messages : une
+     notification doit pouvoir apparaître quelle que soit la page affichée. -->
+@if (notifications.bandeaux().length > 0) {
+  <div class="pile-bandeaux" role="status" aria-live="polite">
+    @for (bandeau of notifications.bandeaux(); track bandeau.id) {
+      <div class="bandeau-notif">
+        <div class="bandeau-texte">
+          <strong>{{ bandeau.titre }}</strong>
+          <span class="bandeau-corps">{{ bandeau.corps }}</span>
+        </div>
+        <a routerLink="/messages" class="bandeau-lien">Ouvrir</a>
+        <button
+          type="button"
+          class="bandeau-fermer"
+          aria-label="Fermer la notification"
+          (click)="notifications.fermerBandeau(bandeau.id)">×</button>
+      </div>
+    }
+  </div>
+}

@@ -138,6 +138,84 @@
   margin: 0 0 1rem;
 }
 
+/* --- Bandeaux de notification -------------------------------------------- */
+
+/* position: fixed — les bandeaux sont ancres a la FENETRE, pas au document :
+   ils restent visibles meme si la page est defilee. */
+.pile-bandeaux {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 50;
+  display: grid;
+  gap: 0.5rem;
+  width: min(22rem, calc(100vw - 2rem));
+}
+
+.bandeau-notif {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  color: var(--texte);
+  background: var(--carte);
+  border: 1px solid var(--bordure);
+  border-left: 4px solid var(--bleu);
+  border-radius: var(--rayon-petit);
+  box-shadow: var(--ombre-forte);
+  animation: entree-bandeau 0.2s ease-out;
+}
+
+@keyframes entree-bandeau {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* min-width: 0 autorise l'enfant flex a retrecir, sans quoi le texte long
+   ferait deborder la carte au lieu d'etre tronque. */
+.bandeau-texte {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.bandeau-texte strong {
+  font-size: 0.88rem;
+}
+
+.bandeau-corps {
+  font-size: 0.84rem;
+  color: var(--texte-doux);
+  /* Un message peut etre long : une seule ligne, coupee proprement. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bandeau-lien {
+  flex-shrink: 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--bleu);
+}
+
+.bandeau-fermer {
+  flex-shrink: 0;
+  padding: 0 0.35rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--texte-doux);
+  background: none;
+  box-shadow: none;
+}
+
+.bandeau-fermer:hover:not(:disabled) {
+  color: var(--texte);
+  background: none;
+  box-shadow: none;
+}
+
 @media (max-width: 620px) {
   .entete-contenu {
     gap: 0.6rem;

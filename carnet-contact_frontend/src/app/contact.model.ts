@@ -19,6 +19,22 @@ export interface Contact {
 }
 
 /**
+ * Ce que renvoie GET /api/contacts depuis la pagination : plus un tableau, mais
+ * une TRANCHE accompagnée de quoi se repérer dans l'ensemble.
+ *
+ * `total` et `totalPages` ne sont pas décoratifs : sans eux, impossible
+ * d'afficher « page 2 sur 7 » ni de savoir qu'il faut griser le bouton
+ * « suivant » — le client n'a aucun moyen de deviner ce qu'il n'a pas reçu.
+ */
+export interface PageContacts {
+  contenu: Contact[];
+  page: number;
+  taille: number;
+  total: number;
+  totalPages: number;
+}
+
+/**
  * Les six réseaux gérés, décrits une seule fois ici.
  *
  * Sans cette liste, il faudrait répéter six fois le même bloc de gabarit et

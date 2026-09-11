@@ -26,6 +26,70 @@
   margin-top: 0.4rem;
 }
 
+/* Le champ et son bouton sur une ligne. Le champ prend la place restante,
+   le bouton garde sa largeur naturelle. */
+.champ-avec-bouton {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.champ-avec-bouton input {
+  flex: 1;
+  /* Sans min-width, un input en flex refuse de descendre sous sa largeur
+     par defaut et deborde sur petit ecran. */
+  min-width: 0;
+}
+
+.bouton-oeil {
+  flex-shrink: 0;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--bleu);
+  background: transparent;
+  border: 1.5px solid var(--bordure);
+  box-shadow: none;
+}
+
+.bouton-oeil:hover:not(:disabled) {
+  background: var(--bleu-pale);
+  border-color: var(--bleu);
+  box-shadow: none;
+}
+
+/* Liste des conditions du mot de passe : grise par defaut, verte une fois
+   satisfaite. Le changement de couleur ET la marque (• -> ✓) portent
+   l'information : la couleur seule serait invisible pour un daltonien. */
+.criteres {
+  display: grid;
+  gap: 0.2rem;
+  margin: -0.4rem 0 0.9rem;
+  padding: 0.6rem 0.8rem;
+  list-style: none;
+  font-size: 0.84rem;
+  color: var(--texte-doux);
+  background: var(--fond);
+  border-radius: var(--rayon-petit);
+}
+
+.criteres li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.criteres li.satisfait {
+  color: #0d7a3e;
+  font-weight: 500;
+}
+
+.marque {
+  display: inline-block;
+  width: 0.9rem;
+  text-align: center;
+  font-weight: 700;
+}
+
 .erreur-bloc {
   margin: 0 0 0.9rem;
   padding: 0.6rem 0.8rem;

@@ -8,6 +8,7 @@ import { baseUrlInterceptor } from './interceptors/base-url-interceptor';
 import { authInterceptor } from './interceptors/auth-interceptor';
 import { chargementInterceptor } from './interceptors/chargement-interceptor';
 import { erreurInterceptor } from './interceptors/erreur-interceptor';
+import { rafraichissementInterceptor } from './interceptors/rafraichissement-interceptor';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -18,12 +19,17 @@ export const appConfig: ApplicationConfig = {
     // bas ; au retour, la réponse le remonte de bas en haut.
     // base-url réécrit donc l'URL avant que les autres ne la voient, et le
     // catchError de erreur s'exécute avant le finalize de chargement.
+    //
+    // rafraichissement est placé EN DERNIER, donc au plus profond : c'est lui
+    // qui voit l'erreur en premier au retour. Il peut ainsi rattraper un 401
+    // avant que erreurInterceptor ne déconnecte l'utilisateur.
     provideHttpClient(
       withInterceptors([
         baseUrlInterceptor,
         authInterceptor,
         chargementInterceptor,
-        erreurInterceptor
+        erreurInterceptor,
+        rafraichissementInterceptor
       ])
     )
   ]

@@ -2,6 +2,7 @@ import { HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { finalize } from 'rxjs';
 import { EtatHttpService } from '../services/etat-http';
+import { DISCRET } from './http-contexte';
 
 /**
  * Compte les requêtes en vol, pour l'indicateur de chargement.
@@ -12,6 +13,13 @@ import { EtatHttpService } from '../services/etat-http';
  * pas encore été écrites.
  */
 export const chargementInterceptor: HttpInterceptorFn = (req, next) => {
+  // Une requête de fond (rafraîchissement automatique de la messagerie) ne
+  // doit pas allumer l'indicateur : l'utilisateur ne l'a pas déclenchée, et
+  // verrait « Chargement… » clignoter sans rien avoir demandé.
+  if (req.context.get(DISCRET)) {
+    return next(req);
+  }
+
   // Un intercepteur s'exécute dans un contexte d'injection : inject() y
   // fonctionne exactement comme dans un composant ou un service.
   const etatHttp = inject(EtatHttpService);

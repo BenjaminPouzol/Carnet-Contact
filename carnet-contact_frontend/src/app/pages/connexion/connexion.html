@@ -19,10 +19,47 @@
 
       <div class="champ">
         <label for="mdp">Mot de passe</label>
-        <input id="mdp" type="password" formControlName="motDePasse" placeholder="6 caractères minimum" />
+
+        <div class="champ-avec-bouton">
+          <!-- [type] est un binding de propriété comme un autre (section 6) :
+               basculer entre 'password' et 'text' suffit à montrer ou masquer
+               la saisie, sans toucher au FormControl ni à sa valeur. -->
+          <input
+            id="mdp"
+            [type]="motDePasseVisible() ? 'text' : 'password'"
+            formControlName="motDePasse"
+            [placeholder]="mode() === 'inscription' ? '10 caractères minimum' : 'Votre mot de passe'" />
+
+          <!-- type="button" est OBLIGATOIRE : dans un <form>, un bouton sans
+               type vaut type="submit", et ce bouton enverrait le formulaire au
+               lieu de dévoiler le mot de passe.
+               [attr.aria-pressed] annonce l'état aux lecteurs d'écran — c'est
+               un interrupteur, pas une action ponctuelle. -->
+          <button
+            type="button"
+            class="bouton-oeil"
+            (click)="basculerVisibiliteMotDePasse()"
+            [attr.aria-pressed]="motDePasseVisible()"
+            [attr.aria-label]="motDePasseVisible() ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
+            @if (motDePasseVisible()) { Masquer } @else { Afficher }
+          </button>
+        </div>
       </div>
 
       @if (mode() === 'inscription') {
+        <!-- La liste se construit à partir de la constante CRITERES : ajouter
+             un critère au validateur l'ajoute ici sans toucher au gabarit. -->
+        <ul class="criteres" aria-label="Conditions du mot de passe">
+          @for (critere of criteres; track critere.cle) {
+            <li [class.satisfait]="critereSatisfait(critere)">
+              <span class="marque" aria-hidden="true">
+                @if (critereSatisfait(critere)) { ✓ } @else { • }
+              </span>
+              {{ critere.libelle }}
+            </li>
+          }
+        </ul>
+
         <div class="champ">
           <label for="nom">Nom affiché <span class="muet">(optionnel)</span></label>
           <input id="nom" formControlName="nomAffichage" placeholder="Comment les autres vous verront" />

@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ContactService } from '../../services/contact';
 import { ReseauxSociaux } from '../../components/reseaux-sociaux/reseaux-sociaux';
@@ -21,19 +21,15 @@ export class ContactDetail implements OnInit {
   // d'une fiche contact à une autre fiche contact.
   private contactId = Number(this.route.snapshot.paramMap.get('id'));
 
-  // computed() calcule une valeur DÉRIVÉE d'un ou plusieurs signals, et
-  // se recalcule automatiquement dès que l'un d'eux change. Ici, elle
-  // dépend du signal partagé contacts() : si la liste est encore vide au
-  // premier affichage (réponse du serveur pas encore arrivée), contact()
-  // vaudra undefined, puis se mettra à jour tout seul dès que la réponse
-  // arrivera et remplira le signal — sans qu'on écrive .subscribe() ici.
-  contact = computed(() =>
-    this.contactService.contacts().find(c => c.id === this.contactId)
-  );
+  // Cette page cherchait auparavant son contact dans la liste partagée, avec
+  // un computed(). La pagination a rendu ce raccourci faux : la liste ne
+  // contient plus que six contacts, et celui qu'on demande peut être ailleurs.
+  // Le service expose donc un signal dédié, alimenté par un appel à la fiche
+  // seule. Le principe n'a pas changé — le gabarit lit un signal et se
+  // réaffiche tout seul quand la réponse arrive — seule la source diffère.
+  contact = this.contactService.contactCourant;
 
   ngOnInit(): void {
-    // Utile en cas d'accès direct à cette URL (lien partagé, rechargement
-    // de la page) : le signal partagé serait alors encore vide.
-    this.contactService.chargerContacts();
+    this.contactService.chargerContact(this.contactId);
   }
 }

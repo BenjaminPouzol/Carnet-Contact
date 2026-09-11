@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { AuthService } from '../../services/auth';
@@ -12,7 +12,7 @@ import { Utilisateur } from '../../utilisateur.model';
   templateUrl: './messages.html',
   styleUrl: './messages.css'
 })
-export class Messages implements OnInit {
+export class Messages implements OnInit, OnDestroy {
   private fb = inject(FormBuilder);
   private auth = inject(AuthService);
   private messageService = inject(MessageService);
@@ -46,12 +46,22 @@ export class Messages implements OnInit {
 
   ngOnInit(): void {
     this.auth.autresUtilisateurs().subscribe(liste => this.interlocuteurs.set(liste));
-    this.messageService.chargerNonLus();
+  }
+
+  /**
+   * ngOnDestroy : le pendant de ngOnInit, appelé quand Angular retire le
+   * composant de l'écran. C'est l'endroit où rendre ce qu'on a emprunté —
+   * ici, arrêter le sondage du fil. Sans lui, quitter la page Messages
+   * laisserait une requête partir toutes les cinq secondes pour alimenter un
+   * affichage que plus personne ne regarde.
+   */
+  ngOnDestroy(): void {
+    this.messageService.arreterSuiviFil();
   }
 
   ouvrir(utilisateur: Utilisateur): void {
     this.selection.set(utilisateur);
-    this.messageService.chargerFil(utilisateur.id);
+    this.messageService.suivreFil(utilisateur.id);
   }
 
   envoyer(): void {

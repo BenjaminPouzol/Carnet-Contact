@@ -2,6 +2,7 @@ import { Component, effect, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AuthService } from '../../services/auth';
 import { EtatHttpService } from '../../services/etat-http';
+import { NotificationService } from '../../services/notification';
 
 @Component({
   selector: 'app-profil',
@@ -13,9 +14,11 @@ export class Profil {
   private fb = inject(FormBuilder);
   private auth = inject(AuthService);
   private etatHttp = inject(EtatHttpService);
+  private notifications = inject(NotificationService);
 
   chargement = this.etatHttp.chargement;
   utilisateur = this.auth.utilisateur;
+  permissionNotifications = this.notifications.permission;
 
   enregistre = signal(false);
 
@@ -63,5 +66,14 @@ export class Profil {
   /** Aperçu live de l'URL saisie, sans attendre l'enregistrement. */
   apercu(): string {
     return this.formulaire.value.photoUrl?.trim() || '';
+  }
+
+  /**
+   * La demande de permission part d'un CLIC, et c'est obligatoire : les
+   * navigateurs ignorent une demande qui ne fait pas suite à une action de
+   * l'utilisateur, pour empêcher les sites de la réclamer dès l'ouverture.
+   */
+  activerNotifications(): void {
+    this.notifications.demanderPermission();
   }
 }

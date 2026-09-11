@@ -3,6 +3,7 @@ import { isPlatformBrowser } from '@angular/common';
 import { Utilisateur } from '../utilisateur.model';
 
 const CLE_JETON = 'carnet.jeton';
+const CLE_RAFRAICHISSEMENT = 'carnet.rafraichissement';
 const CLE_UTILISATEUR = 'carnet.utilisateur';
 
 /**
@@ -27,6 +28,11 @@ export class SessionService {
   private navigateur = isPlatformBrowser(this.plateforme);
 
   private jetonSignal = signal<string | null>(null);
+
+  // Le second jeton, celui qui sert à renouveler le premier. Il ne part JAMAIS
+  // dans l'en-tête Authorization : il ne sert qu'à l'appel /api/auth/rafraichir.
+  private rafraichissementSignal = signal<string | null>(null);
+
   private utilisateurSignal = signal<Utilisateur | null>(null);
 
   readonly utilisateur = this.utilisateurSignal.asReadonly();
@@ -44,6 +50,7 @@ export class SessionService {
 
       if (jeton && utilisateurBrut) {
         this.jetonSignal.set(jeton);
+        this.rafraichissementSignal.set(localStorage.getItem(CLE_RAFRAICHISSEMENT));
         try {
           this.utilisateurSignal.set(JSON.parse(utilisateurBrut));
         } catch {
@@ -64,12 +71,18 @@ export class SessionService {
     return this.jetonSignal();
   }
 
-  ouvrir(jeton: string, utilisateur: Utilisateur): void {
+  jetonRafraichissementActuel(): string | null {
+    return this.rafraichissementSignal();
+  }
+
+  ouvrir(jeton: string, jetonRafraichissement: string, utilisateur: Utilisateur): void {
     this.jetonSignal.set(jeton);
+    this.rafraichissementSignal.set(jetonRafraichissement);
     this.utilisateurSignal.set(utilisateur);
 
     if (this.navigateur) {
       localStorage.setItem(CLE_JETON, jeton);
+      localStorage.setItem(CLE_RAFRAICHISSEMENT, jetonRafraichissement);
       localStorage.setItem(CLE_UTILISATEUR, JSON.stringify(utilisateur));
     }
   }
@@ -84,10 +97,12 @@ export class SessionService {
 
   vider(): void {
     this.jetonSignal.set(null);
+    this.rafraichissementSignal.set(null);
     this.utilisateurSignal.set(null);
 
     if (this.navigateur) {
       localStorage.removeItem(CLE_JETON);
+      localStorage.removeItem(CLE_RAFRAICHISSEMENT);
       localStorage.removeItem(CLE_UTILISATEUR);
     }
   }

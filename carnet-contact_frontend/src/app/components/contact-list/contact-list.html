@@ -1,8 +1,36 @@
-<h2>Mes contacts</h2>
+<div class="entete-liste">
+  <h2>Mes contacts</h2>
+
+  <div class="zone-recherche">
+    <input
+      type="search"
+      class="champ-recherche"
+      placeholder="Rechercher un nom, un prénom, un email…"
+      aria-label="Rechercher un contact"
+      [formControl]="champRecherche" />
+
+    @if (recherche()) {
+      <button type="button" class="fantome" (click)="effacerRecherche()">Effacer</button>
+    }
+  </div>
+</div>
+
+@if (total() > 0) {
+  <p class="muet compte-resultats">
+    {{ total() }} contact{{ total() > 1 ? 's' : '' }}
+    @if (recherche()) {
+      trouvé{{ total() > 1 ? 's' : '' }} pour « {{ recherche() }} »
+    }
+  </p>
+}
 
 @if (contacts().length === 0) {
   <div class="carte vide">
-    <p class="muet">Aucun contact enregistré. Ajoutez le premier ci-dessus.</p>
+    @if (recherche()) {
+      <p class="muet">Aucun contact ne correspond à « {{ recherche() }} ».</p>
+    } @else {
+      <p class="muet">Aucun contact enregistré. Ajoutez le premier ci-dessus.</p>
+    }
   </div>
 } @else {
   <ul class="cartes-contacts">
@@ -37,4 +65,25 @@
       </li>
     }
   </ul>
+
+  <!-- La navigation entre pages n'a de sens qu'à partir de deux pages. -->
+  @if (totalPages() > 1) {
+    <nav class="pagination" aria-label="Pagination des contacts">
+      <button
+        type="button"
+        (click)="pagePrecedente()"
+        [disabled]="premierePage() || chargement()">
+        ← Précédent
+      </button>
+
+      <span class="position-page">Page {{ page() + 1 }} sur {{ totalPages() }}</span>
+
+      <button
+        type="button"
+        (click)="pageSuivante()"
+        [disabled]="dernierePage() || chargement()">
+        Suivant →
+      </button>
+    </nav>
+  }
 }

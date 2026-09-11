@@ -54,6 +54,22 @@
   color: var(--bleu-fonce);
 }
 
+.bloc-notifications {
+  margin-top: 1rem;
+  border-top: 4px solid var(--rouge);
+}
+
+.bloc-notifications h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.bloc-notifications p {
+  margin: 0 0 0.7rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 @media (max-width: 620px) {
   .panneau-profil {
     grid-template-columns: 1fr;

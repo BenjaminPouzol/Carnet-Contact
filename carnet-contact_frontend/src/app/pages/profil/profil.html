@@ -38,3 +38,44 @@
     </div>
   </form>
 </div>
+
+<div class="carte bloc-notifications">
+  <h3>Notifications</h3>
+
+  <!-- @switch sur l'état de la permission : les quatre cas n'appellent ni le
+       même texte ni la même action. -->
+  @switch (permissionNotifications()) {
+    @case ('granted') {
+      <p class="muet">
+        Les notifications système sont activées. Vous serez prévenu à l'arrivée
+        d'un message, même si l'onglet est en arrière-plan.
+      </p>
+    }
+    @case ('denied') {
+      <p class="muet">
+        Vous avez refusé les notifications pour ce site. Un site ne peut pas
+        redemander l'autorisation lui-même : il faut la rétablir dans les
+        réglages du navigateur (l'icône à gauche de l'adresse).
+      </p>
+      <p class="muet">
+        En attendant, les nouveaux messages s'affichent quand même dans un
+        bandeau, en bas de l'application.
+      </p>
+    }
+    @case ('indisponible') {
+      <p class="muet">
+        Ce navigateur ne propose pas de notifications système. Les nouveaux
+        messages s'affichent dans un bandeau, en bas de l'application.
+      </p>
+    }
+    @default {
+      <p class="muet">
+        Soyez prévenu à l'arrivée d'un message, même quand l'onglet n'est pas
+        au premier plan.
+      </p>
+      <button type="button" (click)="activerNotifications()">
+        Activer les notifications
+      </button>
+    }
+  }
+</div>

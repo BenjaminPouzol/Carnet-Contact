@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, effect, inject } from '@angular/core';
+import { Component, OnInit, effect, inject } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ContactService } from '../../services/contact';
@@ -22,10 +22,8 @@ export class ContactEdit implements OnInit {
 
   reseaux = RESEAUX;
 
-  // Le contact à modifier, retrouvé dans le signal partagé.
-  contact = computed(() =>
-    this.contactService.contacts().find(c => c.id === this.id)
-  );
+  // Le contact à modifier, chargé seul (voir le commentaire de ContactDetail).
+  contact = this.contactService.contactCourant;
 
   // true pendant une requête HTTP : sert à désactiver le bouton Enregistrer.
   chargement = this.etatHttp.chargement;
@@ -79,8 +77,7 @@ export class ContactEdit implements OnInit {
   }
 
   ngOnInit(): void {
-    // Accès direct à l'URL /contact/:id/modifier : le signal serait vide.
-    this.contactService.chargerContacts();
+    this.contactService.chargerContact(this.id);
   }
 
   onSubmit(): void {
