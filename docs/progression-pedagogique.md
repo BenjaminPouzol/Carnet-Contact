@@ -547,17 +547,144 @@ Notions ajoutées au support : **section 27 « Saisie et validation d'un mot de
 passe »** et **section 28 « Notifications du navigateur »**. 13 entrées ajoutées
 au pense-bête. Sections Backend/Git/Pense-bête renumérotées 29/30/31.
 
+### Partie 12 — Administration, réactions, mode sombre et PrimeNG
+Quatre demandes formulées ensemble : un panneau d'administration des comptes,
+l'horodatage et l'accusé de lecture sur les messages, des réactions emoji, et un
+mode sombre — avec l'autorisation explicite d'utiliser PrimeNG pour l'interface.
+
+Quatre choix ont été soumis à l'utilisateur avant de commencer, parce qu'ils
+engageaient la suite : l'ampleur de l'adoption de PrimeNG (« complet »), les
+pouvoirs de l'administrateur (les quatre), la façon de désigner le premier
+administrateur (le premier inscrit), et la mécanique des réactions (cinq emojis
+fixes, une par personne et par message).
+
+#### Administration : l'autorisation, distincte de l'authentification
+77. Point pédagogique central de la partie : **authentification** (« qui es-tu ? »)
+    et **autorisation** (« as-tu le droit ? ») sont deux questions différentes.
+    Cacher un bouton n'est pas une protection ; seule la route serveur en est une
+78. `enum Role` avec `@Enumerated(STRING)` — et non `ORDINAL`, qui enregistrerait
+    un indice dont le sens changerait si l'on insérait une valeur dans l'enum
+79. Le rôle voyage dans le JWT sous forme de *claim* signée. Conséquence
+    assumée du sans-état : un rôle retiré ne prend effet qu'à l'expiration du
+    jeton (15 min). On atténue — révocation des jetons de rafraîchissement à la
+    désactivation, vérification de l'état réel en base pour les actions destructrices
+80. `hasRole("ADMIN")` ajoute le préfixe `ROLE_` implicitement — source d'erreur
+    classique, notée au pense-bête
+81. Trois garde-fous : jamais sur soi-même, jamais le dernier administrateur
+    actif, et suppression dans l'ordre inverse des dépendances (feuilles
+    d'abord, racine en dernier), le tout `@Transactional`
+82. Le garde-fou « dernier administrateur » semble inatteignable — l'appelant
+    compte toujours pour un. Il ne l'est pas : il attrape exactement le cas d'un
+    appelant **déjà rétrogradé mais dont le jeton dit encore ADMIN**. Vérifié en
+    conditions réelles au `curl` : 400 et non 204
+83. Amorçage : le premier compte inscrit devient administrateur (`count() == 0`).
+    Acceptable ici, la base H2 étant en mémoire ; en production, un script de
+    migration serait préférable
+
+#### PrimeNG : ce qu'une bibliothèque apporte, et ce qu'elle coûte
+84. Règle de décision énoncée puis appliquée : **prendre la bibliothèque pour ce
+    qui est générique et coûteux, garder son code pour ce qui est spécifique ou
+    déjà résolu**. `p-table`, `p-paginator`, `p-confirmDialog` sont adoptés
+85. Une exception assumée, contre la consigne « PrimeNG complet » : la bascule
+    « Afficher le mot de passe » n'a **pas** été remplacée par `p-password`,
+    dont l'interrupteur est un `<i>` — ni focalisable au clavier, ni annoncé
+    comme interrupteur. Adopter une bibliothèque n'oblige pas à accepter chacun
+    de ses choix, surtout quand c'est une régression sur une fonctionnalité
+    demandée
+86. **Le piège des couches CSS**, découvert en cours de route : nos règles
+    globales `button { … }`, hors de toute couche, écrasaient l'habillage de
+    PrimeNG rangé dans `@layer primeng` — tous les `p-button` sortaient en bleu
+    uni, leur `severity` ignorée. Le hors-couche bat toujours une couche, quelle
+    que soit la spécificité. Corrigé par `@layer theme, base, primeng;` et le
+    passage des styles de balises dans `@layer base`
+87. `::ng-deep` (préfixé de `:host`) pour atteindre l'intérieur d'un composant
+    de bibliothèque, que l'encapsulation Angular rend autrement inaccessible
+88. **Chargement différé** (`loadComponent`) introduit là où il se justifie
+    vraiment : le panneau d'administration traîne 620 kB de `p-table` derrière
+    lui et ne concerne qu'une poignée de comptes. Règle retenue : différer ce
+    qui est lourd ET rare
+89. Budgets d'`angular.json` relevés en connaissance de cause — ce sont des
+    alarmes que l'on règle soi-même, pas des limites techniques
+
+#### Réactions : une entité de liaison
+90. Une réaction appartient au **couple** (message, personne) : c'est une table
+    de liaison, avec une contrainte d'unicité **dans le schéma** — une règle
+    métier exprimée là où elle ne peut pas être contournée
+91. `length = 8` sur la colonne emoji : un emoji n'est pas un caractère
+    (« ❤️ » compte deux points de code)
+92. **Une seule route pour trois gestes** (poser, remplacer, retirer) : le
+    serveur compare l'emoji reçu à celui déjà posé et en déduit l'action. Trois
+    routes auraient laissé le client trancher à partir d'un affichage périmé
+93. **Le problème N+1** : une requête par message devient une seule requête
+    `findByMessageIdIn`. Réflexe à acquérir — dès qu'une requête apparaît dans
+    une boucle, il faut la sortir
+94. `parMoi` ne peut pas être une colonne : la réponse dépend de qui regarde.
+    D'où un DTO `ReactionResume` calculé à l'envoi, et `LinkedHashMap` pour que
+    l'ordre des emojis ne change pas d'un rafraîchissement à l'autre
+
+#### Mode sombre : le travail était déjà fait
+95. Aucune règle CSS existante n'a eu à changer — les variables de la section 21
+    suffisaient. Seules les *valeurs* changent derrière les mêmes noms
+96. `color-scheme` pour ce que le navigateur dessine lui-même (ascenseurs,
+    menus natifs), hors de portée du CSS
+97. Script synchrone dans le `<head>` contre le scintillement (FOUC) : c'est
+    l'un des rares cas où dupliquer volontairement la logique se justifie — les
+    deux s'exécutent à des moments où l'autre n'existe pas
+98. `typeof window.matchMedia !== 'function'` : **détection de plateforme ≠
+    détection de fonctionnalité**. `isPlatformBrowser` est vrai dans les tests,
+    mais le DOM simulé ne fournit pas cette API
+
+#### Tests : une leçon de maintenance
+99. Ajouter `role` et `actif` au modèle a cassé quatre fichiers de test d'un
+    coup, chacun contenant sa propre copie de l'objet. Plutôt que corriger
+    quatre fois la même chose, création de fabriques (`donnees-test.ts`) avec
+    `Partial<T>` : un champ ajouté ne se corrige désormais qu'à un seul endroit
+
+#### Vérifications faites
+- Backend : 63 tests (dont 15 sur l'administration et 10 sur les messages et
+  réactions). Frontend : 70 tests (12 nouveaux — thème, service et garde
+  d'administration, réactions)
+- `ng build` passe, prérendu SSR compris
+- Parcours complet vérifié au `curl` sur un port dédié (8123) : premier inscrit
+  administrateur, 403 pour un utilisateur ordinaire sur `/api/admin/**`, rôle
+  correct dans la charge du JWT, accusé de lecture qui bascule à l'ouverture du
+  fil, cycle complet des réactions (poser → compter → remplacer → retirer),
+  emoji hors liste refusé en 400, les trois garde-fous d'administration, refus
+  de connexion d'un compte désactivé, disparition d'un compte désactivé de la
+  liste des interlocuteurs, et suppression en cascade
+- Non vérifié : l'apparence réelle dans un navigateur — ni le mode sombre, ni
+  les composants PrimeNG, ni la palette de réactions n'ont été vus à l'écran
+
+Deux incidents à retenir. Le premier : un `curl` envoyant un emoji en ligne de
+commande renvoyait 400 alors que le serveur était correct — c'est Git Bash sous
+Windows qui altérait les caractères non-ASCII, pas le code. Corps écrit dans un
+fichier et envoyé par `--data-binary`, et le test passe. Le second : le port
+8099 utilisé lors de la session précédente était encore occupé par une instance
+oubliée, qui aurait fait mesurer l'ancien code — même piège qu'en Partie 11,
+évité cette fois en vérifiant `netstat` avant de conclure.
+
+Notions ajoutées au support : **section 29 « Rôles et autorisations »**,
+**section 30 « PrimeNG, couches CSS et chargement différé »**, **section 31
+« Mode sombre »** et **section 32 « Réactions et accusés de lecture »**, plus
+deux sous-sections ajoutées à la section 26 (fabriques de test, et les pièges
+d'attente dans les tests). 17 entrées ajoutées au pense-bête. Sections
+Backend/Git/Pense-bête renumérotées 33/34/35.
+
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
 - Parcours complet dans un vrai navigateur — la seule vérification jamais faite
-  depuis le début du projet, et la seule façon de voir les notifications
-  système à l'œuvre
+  depuis le début du projet, et devenue la plus urgente : le mode sombre, les
+  composants PrimeNG et la palette de réactions n'ont jamais été vus à l'écran
 - Messagerie : passer du sondage à un vrai temps réel (WebSocket ou SSE), ce qui
   supprimerait les requêtes inutiles quand rien ne change
-- Persistance réelle : H2 est en mémoire, tout disparaît au redémarrage
-- Tests : rien ne couvre encore la messagerie ni le composant `reseaux-sociaux`
-- Accessibilité et navigation au clavier, jamais examinées
+- Persistance réelle : H2 est en mémoire, tout disparaît au redémarrage — et
+  avec elle le statut d'administrateur du premier inscrit
+- Tests : rien ne couvre encore le composant `reseaux-sociaux` ni la page
+  d'administration elle-même (son service et sa garde le sont, pas son gabarit)
+- Accessibilité et navigation au clavier, examinées seulement au cas par cas
+  (la bascule du mot de passe, l'ordre de lecture des bulles) — jamais en revue
+  d'ensemble
 
 ## Comment poursuivre cette philosophie
 

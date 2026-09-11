@@ -34,9 +34,13 @@ Document de référence détaillé, organisé par notion. Chaque section combine
 26. [Tests automatisés](#26-tests-automatisés)
 27. [Saisie et validation d'un mot de passe](#27-saisie-et-validation-dun-mot-de-passe)
 28. [Notifications du navigateur](#28-notifications-du-navigateur)
-29. [Backend Spring Boot](#29-backend-spring-boot)
-30. [Git et GitHub](#30-git-et-github)
-31. [Pense-bête de dépannage](#31-pense-bête-de-dépannage)
+29. [Rôles et autorisations](#29-rôles-et-autorisations)
+30. [PrimeNG, couches CSS et chargement différé](#30-primeng-couches-css-et-chargement-différé)
+31. [Mode sombre](#31-mode-sombre)
+32. [Réactions et accusés de lecture](#32-réactions-et-accusés-de-lecture)
+33. [Backend Spring Boot](#33-backend-spring-boot)
+34. [Git et GitHub](#34-git-et-github)
+35. [Pense-bête de dépannage](#35-pense-bête-de-dépannage)
 
 ---
 
@@ -1682,7 +1686,7 @@ protected contactService = inject(ContactService);
 
 ### Pourquoi le POST met plus longtemps à signaler l'échec que le GET
 
-Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 29). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
+Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 33). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
 
 ## 16. Indicateur de chargement (`finalize`)
 
@@ -2194,6 +2198,8 @@ public class JwtService {
     }
 }
 ```
+
+> **Note de mise à jour.** `genererJeton` prend aujourd'hui un second paramètre, le rôle, qu'elle place dans le jeton sous forme de *claim* — et `JwtService` expose une méthode `roleDuJeton` symétrique (section 29). Le mécanisme décrit ici n'a pas changé d'un iota : c'est toujours la même clé, la même signature, et la même vérification. Le jeton porte simplement une information de plus.
 
 `@Value` injecte une valeur venue de `application.properties` (et non un autre bean). La syntaxe `${VARIABLE:defaut}` permet de surcharger par une variable d'environnement — une clé de signature ne doit **jamais** être versionnée dans un vrai projet.
 
@@ -2872,6 +2878,8 @@ On peut styler l'un comme l'autre, mais il faut choisir la balise selon le compo
 .bulle.de-moi { align-self: flex-end; color: #fff; background: var(--bleu); }
 ```
 
+> **Note de mise à jour.** Cet investissement a été remboursé d'un coup à l'arrivée du mode sombre (section 31) : **aucune règle CSS existante n'a eu à changer**. Le thème sombre n'est que le même fichier avec d'autres *valeurs* derrière les mêmes noms. C'est le meilleur argument possible pour la discipline décrite ici — et sa contrepartie exacte : une seule couleur écrite en dur quelque part reste claire sur fond noir. Le projet a d'ailleurs dû en corriger plusieurs, dans `messages.css` et `connexion.css`.
+
 ## 22. Pagination et recherche côté serveur
 
 ### Le problème : tout charger, toujours
@@ -3134,6 +3142,8 @@ ngOnInit(): void {
   </nav>
 }
 ```
+
+> **Note de mise à jour.** Ces deux boutons ont depuis été remplacés par le `p-paginator` de PrimeNG, qui apporte les numéros de page, le saut au début et à la fin, et la navigation au clavier (section 30). Le raisonnement de cette section est intact — c'est le serveur qui pagine, le client ne fait qu'indiquer quelle page il veut ; seule la façon de le lui demander a changé. Une conversion est apparue au passage, le paginateur raisonnant en index d'élément là où le service raisonne en numéro de page.
 
 ---
 
@@ -3679,7 +3689,7 @@ class MonServiceTest {
 }
 ```
 
-L'injection par constructeur, adoptée en section 29 pour d'autres raisons, se révèle ici un avantage inattendu : elle permet de fabriquer l'objet avec **les valeurs qu'on veut**, y compris des valeurs impossibles autrement.
+L'injection par constructeur, adoptée en section 33 pour d'autres raisons, se révèle ici un avantage inattendu : elle permet de fabriquer l'objet avec **les valeurs qu'on veut**, y compris des valeurs impossibles autrement.
 
 ```java
 // Durée négative : le jeton naît déjà périmé. Impossible à obtenir en
@@ -3920,6 +3930,83 @@ it('compose le libellé métier et la raison technique', () => {
 });
 ```
 
+### Fabriques de données de test
+
+Un jour, l'interface `Utilisateur` gagne deux champs obligatoires (`role`, `actif`). Quatre fichiers de test cessent aussitôt de compiler — chacun contenait sa propre copie de l'objet :
+
+```typescript
+const compte = { id: 1, email: 'alice@exemple.fr', nomAffichage: 'Alice' };
+```
+
+Il faut alors corriger quatre fois la même chose, à l'identique. Le vrai problème n'est pas la correction, c'est qu'elle se **répétera** à chaque évolution du modèle.
+
+La réponse est une **fabrique** : une fonction qui construit l'objet, avec des valeurs par défaut raisonnables.
+
+```typescript
+/**
+ * Partial<T> rend toutes les proprietes facultatives. Un test qui ne
+ * s'interesse qu'au role ecrit unUtilisateur({ role: 'ADMIN' }) et laisse le
+ * reste aux valeurs par defaut.
+ *
+ * Le test ne montre alors QUE ce qui compte pour lui : le bruit disparait, et
+ * l'intention saute aux yeux.
+ */
+export function unUtilisateur(modifications: Partial<Utilisateur> = {}): Utilisateur {
+  return {
+    id: 1,
+    email: 'alice@exemple.fr',
+    nomAffichage: 'Alice',
+    role: 'UTILISATEUR',
+    actif: true,
+    // L'etalement en DERNIER : ce que l'appelant fournit ecrase le defaut.
+    // Place en premier, il serait lui-meme ecrase — l'ordre fait tout.
+    ...modifications
+  };
+}
+```
+
+```typescript
+// Avant
+const bob = { id: 2, email: 'bob@exemple.fr', nomAffichage: 'Bob', role: 'UTILISATEUR', actif: true };
+
+// Apres — et un champ ajoute au modele ne se corrige plus QU'A UN SEUL ENDROIT.
+const bob = unUtilisateur({ id: 2, email: 'bob@exemple.fr', nomAffichage: 'Bob' });
+```
+
+C'est exactement la même logique que les variables CSS de la section 21 : **une information écrite une seule fois se met à jour une seule fois.**
+
+**Dans le projet** — [`donnees-test.ts`](../carnet-contact_frontend/src/app/donnees-test.ts)
+
+### Attendre ce qui n'est pas encore parti
+
+Deux pièges reviennent constamment dans les tests Angular, et tous deux ont la même cause : **quelque chose est différé, et le test regarde trop tôt**.
+
+```typescript
+// Piege 1 : un timer(0, …). Le zero veut dire « au prochain tour de boucle »,
+// pas « tout de suite ». Sans cette promesse vide qui rend la main au moteur
+// JavaScript, expectOne chercherait un appel pas encore emis.
+const rendreLaMain = () => new Promise(resolve => setTimeout(resolve, 0));
+
+service.suivreFil(2);
+await rendreLaMain();
+backend.expectOne('/api/messages/2').flush([...]);
+```
+
+```typescript
+// Piege 2 : un effect(). Il est DIFFERE, pas synchrone. TestBed.tick() lui
+// laisse le temps de s'executer.
+service.basculer();
+TestBed.tick();
+expect(document.documentElement.getAttribute('data-theme')).toBe('sombre');
+```
+
+| Symptôme | Cause | Correction |
+|---|---|---|
+| `Expected one matching request … found none` | Un `timer` n'a pas encore émis | `await` une promesse `setTimeout(…, 0)` |
+| Un `effect()` ne semble pas s'être exécuté | Les effets sont différés | `TestBed.tick()` |
+| Le test avec minuteurs simulés n'émet pas de requête | La file des micro-tâches n'est pas vidée | `vi.advanceTimersByTimeAsync()` plutôt que la variante synchrone |
+
+
 ---
 
 ## 27. Saisie et validation d'un mot de passe
@@ -4143,6 +4230,8 @@ basculerVisibiliteMotDePasse(): void {
 ```
 
 `[attr.x]` plutôt que `[x]` : le premier écrit un **attribut HTML**, le second une **propriété de l'objet DOM**. Pour les attributs `aria-*`, qui n'ont pas de propriété correspondante, seule la forme `[attr.]` fonctionne.
+
+> **Note de mise à jour.** Cette bascule écrite à la main a été **délibérément conservée** lors de l'adoption de PrimeNG (section 30), alors que la bibliothèque propose un `p-password` avec `[toggleMask]`. La raison est celle exposée juste au-dessus : PrimeNG rend son interrupteur sous forme de `<i>`, qui n'est ni atteignable au clavier ni annoncé comme un interrupteur. Le remplacer aurait été une régression. Adopter une bibliothèque ne veut pas dire accepter chacun de ses choix.
 
 ### Dans le projet
 
@@ -4447,7 +4536,966 @@ it('annonce uniquement les messages arrivés depuis le tour précédent', async 
 
 ---
 
-## 29. Backend Spring Boot
+## 29. Rôles et autorisations
+
+Jusqu'ici, l'application distinguait deux états : connecté ou non. C'est de l'**authentification** — répondre à « qui es-tu ? ». Dès qu'on ajoute un panneau d'administration, une seconde question apparaît : « as-tu le droit de faire ça ? ». C'est l'**autorisation**, et les deux ne se confondent pas : un compte parfaitement authentifié peut n'avoir le droit de rien.
+
+La confusion entre les deux est à l'origine d'une bonne part des failles réelles. Un développeur pressé cache le bouton « Supprimer le compte » aux non-administrateurs et considère le travail fait. Mais cacher un bouton ne ferme pas la route qu'il appelait : n'importe qui sachant écrire une requête HTTP y accède encore. **L'autorisation se décide sur le serveur** ; ce que fait le client n'est que du confort.
+
+### Représenter un rôle : une énumération, pas une chaîne
+
+```java
+// Un enum plutot qu'un String : le compilateur refuse alors toute valeur
+// inventee. Avec un String, une faute de frappe ("ADMN") passerait la
+// compilation et ne se verrait qu'en production.
+public enum Role {
+    UTILISATEUR, ADMIN;
+
+    // Spring Security attend ses autorites prefixees par "ROLE_". On centralise
+    // cette convention ICI plutot que de l'eparpiller : elle appartient au
+    // framework, pas a notre metier.
+    public String autorite() {
+        return "ROLE_" + name();
+    }
+}
+```
+
+```java
+@Entity
+public class Utilisateur {
+    // @Enumerated(STRING) enregistre "ADMIN" en base. Le defaut (ORDINAL)
+    // enregistrerait 1 — l'INDICE de la valeur dans l'enum. Le jour ou l'on
+    // insere une valeur au milieu de l'enum, tous les indices se decalent et
+    // les donnees existantes changent silencieusement de sens.
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Role role = Role.UTILISATEUR;
+}
+```
+
+**Dans le projet** — [`model/Role.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Role.java) et [`model/Utilisateur.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Utilisateur.java)
+
+### Faire voyager le rôle dans le jeton
+
+Le rôle doit accompagner chaque requête. Deux possibilités : le relire en base à chaque appel, ou le placer dans le jeton. On a choisi le jeton — c'est la logique même du JWT (section 18) : il porte tout ce qu'il faut pour décider, et le serveur ne garde aucune session.
+
+```java
+public String genererJeton(String email, Role role) {
+    return Jwts.builder()
+            .subject(email)
+            // Une « claim » : une information supplementaire placee dans le
+            // jeton. Elle est SIGNEE avec le reste — donc lisible par tous,
+            // mais impossible a modifier sans invalider la signature.
+            .claim("role", role.name())
+            .signWith(cle)
+            .compact();
+}
+
+public Role roleDuJeton(String jeton) {
+    String brut = charge(jeton).get("role", String.class);
+    try {
+        return Role.valueOf(brut);
+    } catch (IllegalArgumentException | NullPointerException e) {
+        // Un jeton emis AVANT l'ajout des roles n'a pas cette claim. Plutot
+        // que d'echouer, on retombe sur le role le moins privilegie : en
+        // securite, le defaut doit toujours etre le plus restrictif.
+        return Role.UTILISATEUR;
+    }
+}
+```
+
+Le filtre pose ensuite ce rôle comme **autorité** sur l'authentification :
+
+```java
+var autorites = List.of(new SimpleGrantedAuthority(jwtService.roleDuJeton(jeton).autorite()));
+var authentification = new UsernamePasswordAuthenticationToken(email, null, autorites);
+SecurityContextHolder.getContext().setAuthentication(authentification);
+```
+
+Et la configuration réserve les routes :
+
+```java
+.authorizeHttpRequests(a -> a
+    // hasRole("ADMIN") cherche l'autorite "ROLE_ADMIN" : le prefixe est
+    // ajoute implicitement. C'est la source d'erreur classique — ecrire
+    // hasRole("ROLE_ADMIN") fait chercher "ROLE_ROLE_ADMIN".
+    .requestMatchers("/api/admin/**").hasRole("ADMIN")
+    .anyRequest().authenticated())
+```
+
+| Méthode | Rôle |
+|---|---|
+| `hasRole("ADMIN")` | Exige l'autorité `ROLE_ADMIN` (préfixe `ROLE_` ajouté implicitement) |
+| `hasAuthority("ROLE_ADMIN")` | Exige l'autorité exacte, sans préfixe ajouté |
+| `hasAnyRole("ADMIN", "MODERATEUR")` | Accepte l'un ou l'autre |
+| `authenticated()` | Exige seulement d'être connecté |
+| `permitAll()` | Ouvre la route à tous |
+
+Un refus d'autorisation se distingue d'un refus d'authentification par son code HTTP :
+
+| Code | Signification | Cas typique |
+|---|---|---|
+| `401 Unauthorized` | « Je ne sais pas qui tu es » | Jeton absent, expiré ou invalide |
+| `403 Forbidden` | « Je sais qui tu es, et c'est non » | Utilisateur ordinaire sur `/api/admin/**` |
+
+**Dans le projet** — [`security/JwtService.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/security/JwtService.java), [`security/JwtAuthFilter.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/security/JwtAuthFilter.java) et [`security/SecurityConfig.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/security/SecurityConfig.java)
+
+### Le prix du sans-état : la fenêtre du jeton périmé
+
+Mettre le rôle dans le jeton a une conséquence qu'il faut assumer : **un rôle retiré ne prend effet qu'à l'expiration du jeton** (quinze minutes ici). Pendant ce délai, un compte rétrogradé continue de présenter un jeton qui dit « ADMIN », et le serveur le croit — c'est ce jeton qui fait foi.
+
+Ce n'est pas un défaut d'implémentation, c'est le compromis du sans-état : relire le rôle en base à chaque requête supprimerait la fenêtre, mais ajouterait une requête SQL à *tous* les appels. On atténue plutôt les conséquences :
+
+- désactiver un compte **révoque ses jetons de rafraîchissement** : il ne pourra plus en obtenir un nouveau, la fenêtre se referme donc d'elle-même ;
+- les actions destructrices vérifient l'état **réel en base**, pas ce que dit le jeton.
+
+C'est précisément ce que fait le garde-fou « dernier administrateur » :
+
+```java
+// Vrai s'il n'existe AUCUN autre administrateur actif que la cible.
+private boolean dernierAdminActif(Utilisateur cible) {
+    return utilisateurRepository.countByRoleAndActifTrueAndIdNot(Role.ADMIN, cible.getId()) == 0;
+}
+```
+
+Ce contrôle paraît inutile — l'appelant étant lui-même administrateur actif, il « compte » toujours pour un, et le résultat ne devrait jamais valoir zéro. Sauf dans un cas, et c'est exactement celui-là : **un appelant rétrogradé qui utilise encore son ancien jeton**. En base il n'est plus administrateur, il ne compte donc plus ; si sa cible est le dernier administrateur restant, l'opération laisserait l'application sans personne pour l'administrer — un état dont on ne pourrait plus sortir par l'interface.
+
+Ce scénario a été vérifié en conditions réelles : Carla (admin) rétrograde Alice, puis Alice, avec son jeton encore valide, tente de supprimer Carla. Le serveur répond `400` et non `204`.
+
+### Les trois règles d'un panneau d'administration
+
+```java
+// 1. On ne s'applique jamais une action a soi-meme : se desactiver, se
+//    retrograder ou se supprimer ferait perdre l'acces dans la seconde.
+if (cible.getId().equals(moi.getId())) {
+    throw new ResponseStatusException(BAD_REQUEST, "Vous ne pouvez pas ...");
+}
+
+// 2. On ne retire jamais le dernier administrateur actif.
+if (cible.getRole() == Role.ADMIN && dernierAdminActif(cible)) { ... }
+
+// 3. Supprimer suit l'ordre INVERSE des dependances : les feuilles d'abord,
+//    la racine en dernier. Supprimer l'utilisateur en premier violerait les
+//    cles etrangeres de tout ce qui le pointe encore.
+reactionRepository.supprimerCellesDe(id);            // ses reactions
+reactionRepository.supprimerCellesDesMessagesDe(id); // celles recues
+messageRepository.supprimerCeuxDe(id);
+contactRepository.supprimerCeuxDe(id);
+jetonRepository.supprimerTousPour(id);
+utilisateurRepository.delete(cible);                 // la racine, en dernier
+```
+
+Toute la méthode porte `@Transactional` : ces six suppressions forment **une seule opération**. Sans elle, une panne au milieu laisserait un compte sans messages mais toujours présent — un état incohérent que rien ne viendrait réparer.
+
+**Dans le projet** — [`controller/AdminController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/AdminController.java)
+
+### Le premier compte devient administrateur
+
+Un panneau d'administration pose un problème d'amorçage : il faut un administrateur pour en nommer un, mais il n'y en a aucun au départ. La solution la plus simple est de décider que **le premier inscrit l'est**.
+
+```java
+// count() vaut 0 uniquement pour la toute premiere inscription.
+utilisateur.setRole(utilisateurRepository.count() == 0 ? Role.ADMIN : Role.UTILISATEUR);
+```
+
+C'est acceptable pour un projet d'apprentissage à base H2 **en mémoire** : la base repart vide à chaque démarrage, donc le premier compte recréé est de nouveau administrateur. En production, on préférerait un compte créé par un script de migration, hors du parcours d'inscription — sinon le premier visiteur venu devient administrateur.
+
+**Dans le projet** — [`controller/AuthController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/AuthController.java)
+
+### Refuser la connexion d'un compte désactivé
+
+```java
+if (!utilisateur.isActif()) {
+    // 403 et non 401 : le mot de passe etait BON. Repondre « identifiants
+    // incorrects » enverrait la personne le retaper indefiniment. Le message
+    // doit dire ce qui se passe reellement, et vers qui se tourner.
+    throw new ResponseStatusException(
+            HttpStatus.FORBIDDEN, "Ce compte a été désactivé. Contactez un administrateur.");
+}
+```
+
+Il faut fermer la porte des **deux** côtés. Refuser la connexion ne suffit pas : quelqu'un déjà connecté au moment de la désactivation garderait un jeton de rafraîchissement valide et pourrait se renouveler indéfiniment. Le renouvellement vérifie donc aussi l'état du compte, et la désactivation révoque les jetons existants.
+
+### Côté Angular : une garde de rôle
+
+```typescript
+export const adminGuard: CanActivateFn = () => {
+  const session = inject(SessionService);
+  const router = inject(Router);
+
+  if (session.estAdmin()) {
+    return true;
+  }
+
+  // Vers l'accueil, PAS vers la connexion : la personne est bien identifiee,
+  // il lui manque un droit. L'envoyer vers un formulaire de connexion
+  // laisserait croire a un probleme de mot de passe.
+  router.navigate(['/']);
+  return false;
+};
+```
+
+```typescript
+// Deux gardes qui s'enchainent, dans cet ordre : etre connecte, PUIS etre
+// administrateur. Une seule qui dit non suffit a bloquer la route.
+{ path: 'admin', canActivate: [authGuard, adminGuard], component: Admin }
+```
+
+Cette garde lit un champ du compte mémorisé dans le navigateur — que n'importe qui pourrait modifier à la main pour afficher la page. Il n'en tirerait rien : le serveur refuse toutes les routes `/api/admin/**` à qui n'a pas le rôle dans son jeton **signé**, et une signature ne se falsifie pas (section 18). La garde fait donc ce qu'elle sait faire : éviter d'afficher un écran vide rempli d'erreurs 403.
+
+**Dans le projet** — [`admin-guard.ts`](../carnet-contact_frontend/src/app/admin-guard.ts), [`services/session.ts`](../carnet-contact_frontend/src/app/services/session.ts) (le `computed` `estAdmin`) et [`app.routes.ts`](../carnet-contact_frontend/src/app/app.routes.ts)
+
+### Mettre à jour une ligne sans recharger la liste
+
+Après une action d'administration, la tentation est de recharger tout le tableau. C'est simple, mais le tableau clignote, le tri en cours se perd, et on paie une requête complète pour une ligne modifiée.
+
+```typescript
+changerActif(id: number, actif: boolean): void {
+  this.http.put<LigneCompte>(`${this.apiUrl}/${id}/actif`, { actif })
+    .pipe(catchError(() => EMPTY))
+    // Le serveur renvoie la ligne A JOUR : lui seul connait les consequences
+    // reelles de l'action. On la substitue sur place.
+    .subscribe(ligne => this.remplacer(ligne));
+}
+
+private remplacer(ligne: LigneCompte): void {
+  // .map() construit un NOUVEAU tableau : le signal detecte le changement.
+  // Modifier l'element en place ne declencherait aucun reaffichage, la
+  // reference du tableau n'ayant pas bouge.
+  this.comptesSignal.update(liste => liste.map(c => (c.id === ligne.id ? ligne : c)));
+}
+```
+
+Noter aussi le `catchError(() => EMPTY)` : quand le serveur refuse (« c'est le dernier administrateur »), le flux se termine **sans émettre**, donc `subscribe` ne s'exécute pas et l'affichage reste tel quel. La bannière d'erreur, elle, est alimentée par l'intercepteur (section 17).
+
+**Dans le projet** — [`services/admin.ts`](../carnet-contact_frontend/src/app/services/admin.ts) et [`pages/admin/admin.ts`](../carnet-contact_frontend/src/app/pages/admin/admin.ts)
+
+### Filtrer côté client ou côté serveur ?
+
+La page d'administration filtre les comptes **en mémoire**, alors que la liste de contacts interroge le serveur (section 22). Ce n'est pas une incohérence, c'est une question d'échelle :
+
+| | Contacts | Comptes |
+|---|---|---|
+| Volume attendu | Des milliers | Quelques dizaines |
+| Tout charger d'un coup | Impensable | Sans conséquence |
+| Filtrage | Serveur, paginé | `computed()` sur la liste déjà là |
+| Anti-rebond | 300 ms (épargner des requêtes) | 200 ms (épargner des recalculs) |
+
+La même question n'a pas la même bonne réponse selon la taille des données. Chercher « la » solution universelle est ici une erreur de méthode.
+
+---
+
+## 30. PrimeNG, couches CSS et chargement différé
+
+Jusqu'à la section 21, chaque élément visuel du carnet était écrit à la main : boutons, champs, cartes. C'est excellent pour apprendre — on comprend ce qu'on affiche. Mais certains composants demandent beaucoup de travail pour un résultat que tout le monde attend identique : un tableau triable, une boîte de confirmation, un paginateur. Aucun n'a le moindre rapport avec le métier « carnet de contacts », et chacun cache des dizaines de détails (navigation au clavier, annonces aux lecteurs d'écran, comportement sur petit écran).
+
+C'est là qu'une **bibliothèque de composants** paie. PrimeNG en fournit une centaine, déjà accessibles et déjà thématisables.
+
+La règle pour décider : **prendre la bibliothèque pour ce qui est générique et coûteux, garder son propre code pour ce qui est spécifique ou déjà résolu.** Dans ce projet, le tableau des comptes et le paginateur sont passés à PrimeNG ; la bascule « Afficher / masquer le mot de passe » ne l'est pas, parce que `p-password` rend son interrupteur sous forme de `<i>` — ni focalisable au clavier, ni annoncé comme un interrupteur. Adopter une bibliothèque n'oblige pas à accepter chacun de ses choix.
+
+### Installation et thème
+
+```bash
+# Les versions majeures de PrimeNG suivent celles d'Angular : primeng@21 pour
+# Angular 21. Installer primeng@22 sur Angular 21 echoue a l'installation.
+npm install primeng@21 @primeuix/themes @angular/cdk primeicons
+```
+
+```typescript
+// definePreset part d'un theme fourni (Aura) et n'en remplace que ce qu'on
+// veut. On n'ecrit donc que sa propre couleur principale, le reste (contrastes,
+// etats survole/desactive, variante sombre) etant deja calcule.
+const themeProjet = definePreset(Aura, {
+  semantic: {
+    primary: {
+      50: '#eff5ff', 500: '#2b7bff', 600: '#0b5fff', 700: '#0740b5', 950: '#091f4a'
+    }
+  }
+});
+
+providePrimeNG({
+  theme: {
+    preset: themeProjet,
+    options: {
+      // Le selecteur qui declenche la variante sombre (section 31).
+      darkModeSelector: '[data-theme="sombre"]',
+      cssLayer: { name: 'primeng', order: 'theme, base, primeng' }
+    }
+  }
+})
+```
+
+PrimeNG génère ses couleurs sous forme de variables CSS (`--p-primary-600`, …). On peut donc brancher son propre système dessus, et les deux restent d'accord pour toujours :
+
+```css
+:root {
+  --bleu: var(--p-primary-600);   /* une seule palette pour les deux mondes */
+}
+```
+
+**Dans le projet** — [`app.config.ts`](../carnet-contact_frontend/src/app/app.config.ts) et [`styles.css`](../carnet-contact_frontend/src/styles.css)
+
+### Les couches de cascade (`@layer`)
+
+Voici le piège qui coûte le plus de temps quand on introduit une bibliothèque dans un projet déjà stylé.
+
+PrimeNG habille ses composants avec des **classes** (`.p-button`). Nos styles globaux visent des **balises** (`button`). Intuitivement, la classe devrait gagner : elle est plus spécifique. **C'est faux dès qu'il y a des couches.**
+
+Une couche CSS (`@layer`) est un groupe de règles auquel on assigne une priorité. Et la règle est brutale :
+
+> Une déclaration **hors de toute couche** l'emporte sur **toute** déclaration placée dans une couche, quelle que soit sa spécificité.
+
+PrimeNG range délibérément tout son thème dans la couche `primeng` — précisément pour qu'on puisse le retoucher sans surenchérir en sélecteurs. Conséquence non désirée : nos règles `button { background: var(--bleu) }`, sans couche, écrasaient l'habillage de **tous** les `p-button`. Ils sortaient tous en bleu uni, leur `severity` (danger, secondary…) ignorée.
+
+La bonne réponse n'est pas de monter en spécificité — une course sans fin — mais de **déclarer un ordre** :
+
+```css
+/* L'ordre de cette ligne fait loi : la derniere nommee gagne. */
+@layer theme, base, primeng;
+
+@layer base {
+  /* Nos styles de balises deviennent ce qu'ils auraient toujours du etre :
+     des VALEURS PAR DEFAUT, qu'un composant habille peut remplacer. */
+  button { background: var(--bleu); color: #fff; }
+  input  { border: 1.5px solid var(--bordure); }
+}
+
+/* Hors couche : nos classes a nous. Elles dominent tout, y compris PrimeNG —
+   c'est voulu, ce sont des decisions, pas des defauts. */
+.carte { background: var(--carte); }
+```
+
+Résultat : un `<button>` ordinaire garde notre habillage, un `p-button` garde le sien, et `.carte` continue de tout dominer.
+
+| Priorité | Origine | Exemple |
+|---|---|---|
+| 1 (la plus forte) | Hors couche | `.carte`, `.muet` |
+| 2 | `@layer primeng` | `.p-button`, `.p-datatable` |
+| 3 | `@layer base` | `button`, `input`, `label` |
+
+> À retenir : la spécificité ne départage que des règles **de la même couche**. Entre couches, seul l'ordre compte.
+
+**Dans le projet** — [`styles.css`](../carnet-contact_frontend/src/styles.css)
+
+### Retoucher l'intérieur d'un composant : `::ng-deep`
+
+Angular **encapsule** le CSS d'un composant : à la compilation, il ajoute un attribut unique (`_ngcontent-abc`) sur chaque élément du gabarit et le colle à chaque sélecteur. `.cellule { … }` devient en réalité `.cellule[_ngcontent-abc] { … }`. C'est ce qui évite qu'une classe banale comme `.actions`, définie dans deux pages, se marche dessus.
+
+Mais les `<table>`, `<tr>` et `<th>` d'un `p-table` ne sont pas dans notre gabarit : c'est la bibliothèque qui les fabrique, avec son propre attribut. Nos sélecteurs ne les atteignent jamais.
+
+```css
+/*
+  ::ng-deep leve l'encapsulation pour ce qui SUIT, ce qui redonne acces a
+  l'interieur du composant enfant.
+
+  Le prix : la regle redevient globale. On la prefixe donc systematiquement par
+  :host, qui la limite a l'interieur de CE composant — sans quoi elle
+  s'appliquerait a toutes les tables de l'application.
+*/
+:host ::ng-deep .mon-tableau .p-datatable-thead > tr > th {
+  text-transform: uppercase;
+}
+```
+
+> `::ng-deep` est marqué « déprécié » depuis longtemps, sans remplaçant. Il reste la méthode employée en pratique ; la discipline `:host ::ng-deep` suffit à le rendre sûr.
+
+**Dans le projet** — [`pages/admin/admin.css`](../carnet-contact_frontend/src/app/pages/admin/admin.css) et [`components/contact-list/contact-list.css`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.css)
+
+### Un tableau de données : `p-table`
+
+```html
+<p-table [value]="lignes()" [loading]="chargement()" dataKey="id"
+         sortField="date" [sortOrder]="1">
+
+  <!-- pTemplate decrit CHAQUE partie du tableau : on garde la main complete
+       sur le rendu de chaque cellule, la bibliothèque ne fournissant que la
+       structure et les comportements. -->
+  <ng-template pTemplate="header">
+    <tr>
+      <th pSortableColumn="nom">Nom <p-sortIcon field="nom" /></th>
+    </tr>
+  </ng-template>
+
+  <!-- let-ligne : la variable de la ligne courante, comme le « of » d'un @for -->
+  <ng-template pTemplate="body" let-ligne>
+    <tr><td>{{ ligne.nom }}</td></tr>
+  </ng-template>
+
+  <ng-template pTemplate="emptymessage">
+    <tr><td colspan="2">Aucun résultat.</td></tr>
+  </ng-template>
+</p-table>
+```
+
+| Composant | Ce qu'il apporte |
+|---|---|
+| `p-table` | Tri par colonne, état de chargement, message de liste vide |
+| `p-paginator` | Numéros de page, saut au début/à la fin, clavier |
+| `p-confirmDialog` + `ConfirmationService` | Une boîte de confirmation pour toute une page |
+| `p-tag` | Pastille colorée par `severity` (`success`, `danger`, `warn`…) |
+| `p-avatar` | Image ronde, avec repli sur une initiale |
+| `p-iconfield` / `p-inputicon` | Icône **dans** un champ, sans positionnement manuel |
+| `pTooltip` | Infobulle (nécessite `TooltipModule` dans les `imports`) |
+
+Le `ConfirmationService` se fournit **au niveau du composant**, pas dans `app.config` :
+
+```typescript
+@Component({
+  // Declare ici, il vit le temps de la page au lieu de toute la session.
+  providers: [ConfirmationService]
+})
+```
+
+Et une confirmation n'est utile que si elle **nomme** ce qu'elle va détruire. « Êtes-vous sûr ? » se répond oui par réflexe ; « Le compte Bob sera supprimé, ainsi que ses 3 contacts et 7 messages » donne de quoi vérifier qu'on a cliqué sur la bonne ligne.
+
+**Dans le projet** — [`pages/admin/admin.html`](../carnet-contact_frontend/src/app/pages/admin/admin.html) et [`pages/admin/admin.ts`](../carnet-contact_frontend/src/app/pages/admin/admin.ts)
+
+### Directive ou composant : `pButton` sur un `<a>`
+
+```html
+<!-- Ceci NAVIGUE : c'est un lien, pas un bouton. Il doit pouvoir s'ouvrir dans
+     un nouvel onglet, se copier, s'indexer. La DIRECTIVE pButton ne donne que
+     l'apparence ; l'element reste ce qu'il doit etre. -->
+<a pButton icon="pi pi-pencil" label="Modifier" [routerLink]="['/contact', id]"></a>
+
+<!-- Ceci AGIT : le composant <p-button> genere un vrai <button>. -->
+<p-button icon="pi pi-trash" severity="danger" (onClick)="supprimer()" />
+```
+
+Le choix n'est pas cosmétique : il décide de ce que le navigateur et les technologies d'assistance comprennent de l'élément (section 9).
+
+### Convertir entre deux vocabulaires
+
+```typescript
+// Le paginateur raisonne en INDEX D'ELEMENT (`first` = rang du premier
+// element affiche), notre service en NUMERO DE PAGE. On traduit A LA
+// FRONTIERE : chaque monde garde son vocabulaire, plutot que de contaminer le
+// service avec les unites d'un composant d'affichage.
+changerPage(evenement: PaginatorState): void {
+  const premier = evenement.first ?? 0;
+  this.contactService.allerPage(Math.floor(premier / this.taillePage));
+}
+```
+
+```html
+<p-paginator [first]="page() * taillePage" [rows]="taillePage"
+             [totalRecords]="total()" (onPageChange)="changerPage($event)" />
+```
+
+**Dans le projet** — [`components/contact-list/contact-list.ts`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.ts)
+
+### Le chargement différé (`loadComponent`)
+
+Une bibliothèque de composants a un poids. Ajouter `p-table` à l'application a fait bondir le paquet JavaScript initial de plusieurs centaines de kilo-octets — téléchargés par **tout le monde**, alors que le panneau d'administration ne concerne qu'une poignée de comptes.
+
+C'est exactement le cas d'usage du **chargement différé** :
+
+```typescript
+// Import statique en haut du fichier : le composant part dans le paquet
+// principal. Le bon choix pour une page que tout le monde visite.
+{ path: '', component: Accueil }
+
+// loadComponent : import() retourne une PROMESSE. Angular ne declenche le
+// telechargement de ce morceau de code qu'au moment ou quelqu'un navigue
+// vers /admin. Les autres ne le paient jamais.
+{
+  path: 'admin',
+  canActivate: [authGuard, adminGuard],
+  loadComponent: () => import('./pages/admin/admin').then(m => m.Admin)
+}
+```
+
+La règle : **différer ce qui est lourd ET rare**. Différer une page visitée par tous n'ajouterait qu'une attente au moment du clic.
+
+Le résultat se lit directement dans la sortie de `ng build` :
+
+```
+Initial chunk files   | Names  |  Raw size
+main.js               | main   | 274.76 kB     <- tout le monde telecharge ca
+
+Lazy chunk files      | Names  |  Raw size
+chunk-EOKOOYU4.js     | admin  | 619.90 kB     <- seulement les administrateurs
+```
+
+### Les budgets de paquet
+
+Angular surveille la taille du paquet et prévient quand elle dépasse un seuil, défini dans `angular.json` :
+
+```json
+"budgets": [
+  { "type": "initial", "maximumWarning": "1MB", "maximumError": "1.5MB" },
+  { "type": "anyComponentStyle", "maximumWarning": "8kB", "maximumError": "12kB" }
+]
+```
+
+Ces valeurs n'ont rien d'absolu : ce sont des **alarmes que l'on règle soi-même**. Les relever parce qu'une bibliothèque a été ajoutée volontairement est légitime ; les relever à chaque avertissement sans se demander pourquoi le paquet grossit fait perdre tout l'intérêt du garde-fou.
+
+**Dans le projet** — [`app.routes.ts`](../carnet-contact_frontend/src/app/app.routes.ts) et [`angular.json`](../carnet-contact_frontend/angular.json)
+
+---
+
+## 31. Mode sombre
+
+Un mode sombre bien fait n'est **pas un second site**. C'est exactement le même CSS, avec d'autres *valeurs* derrière les mêmes noms. Tout le travail a été fait à la section 21, en déclarant chaque couleur une seule fois sous forme de variable : ajouter le thème sombre n'a demandé de modifier aucune règle existante.
+
+Le prix à payer est la contrepartie exacte de cette facilité : **plus aucune couleur ne doit être écrite en dur**, sinon elle reste claire dans le thème sombre. Une seule `background: #fff` oubliée quelque part, et une carte reste blanche au milieu d'une page noire.
+
+### Deux jeux de valeurs, un seul jeu de noms
+
+```css
+:root {
+  --fond: #f4f6fb;
+  --carte: #ffffff;
+  --texte: #131c2b;
+  --bordure: #dce2ed;
+
+  --ombre: 0 1px 2px rgb(19 28 43 / 0.06);
+
+  /* color-scheme previent le NAVIGATEUR du theme en cours. Il en tient compte
+     pour ce qu'il dessine lui-meme et que le CSS n'atteint pas : barres de
+     defilement, selecteurs de date, menus deroulants natifs, champs de
+     formulaire par defaut. Sans cette ligne, une page sombre garde des
+     ascenseurs blancs. */
+  color-scheme: light;
+}
+
+[data-theme="sombre"] {
+  /* Pas de noir pur : #000 derriere du texte blanc produit un contraste
+     eblouissant et fatigant. Les interfaces sombres soignees s'arretent a un
+     gris tres fonce. */
+  --fond: #0e1420;
+  --carte: #172033;
+  --texte: #e6ebf5;
+  --bordure: #2a3650;
+
+  /* Une ombre noire ne se voit pas sur fond sombre. La profondeur s'y exprime
+     par la LUMIERE — un fond plus clair que son entourage — plutot que par
+     l'ombre portee. On garde donc des ombres tres discretes. */
+  --ombre: 0 1px 2px rgb(0 0 0 / 0.3);
+
+  color-scheme: dark;
+}
+```
+
+Un point qui surprend au début : **une couleur n'a pas de valeur absolue, elle se lit toujours CONTRE un fond**. Le bleu qui ressort bien sur blanc devient trop saturé sur noir. On monte alors d'un cran dans les nuances claires :
+
+```css
+:root            { --bleu: var(--p-primary-600); }
+[data-theme="sombre"] { --bleu: var(--p-primary-400); }
+```
+
+### Pourquoi un attribut plutôt qu'une classe
+
+```css
+/* [data-theme="sombre"] DIT ce qu'il est : un etat, pas un style.
+   Une classe .sombre se confondrait avec du style ordinaire, et rien
+   n'empecherait de l'ajouter par erreur a un element quelconque. */
+```
+
+C'est aussi le sélecteur qu'on donne à PrimeNG (`darkModeSelector`, section 30), pour que la bibliothèque bascule en même temps que nos variables.
+
+### Le service : décider, pas peindre
+
+```typescript
+@Injectable({ providedIn: 'root' })
+export class ThemeService {
+  private navigateur = isPlatformBrowser(inject(PLATFORM_ID));
+
+  private themeSignal = signal<Theme>('clair');
+  readonly theme = this.themeSignal.asReadonly();
+  readonly sombre = computed(() => this.themeSignal() === 'sombre');
+
+  constructor() {
+    if (this.navigateur) {
+      this.themeSignal.set(this.themeInitial());
+
+      // Un effect() plutot qu'un appel dans chaque methode : l'attribut SUIT
+      // le signal, quelle qu'en soit la cause. Une bascule ecrite plus tard,
+      // ou un theme restaure au demarrage, n'auront rien a penser.
+      effect(() => this.appliquer(this.themeSignal()));
+    }
+  }
+
+  basculer(): void {
+    this.themeSignal.update(t => (t === 'clair' ? 'sombre' : 'clair'));
+  }
+
+  private appliquer(theme: Theme): void {
+    // On vise <html> et non <body> : les variables sont declarees sur :root,
+    // et certains elements (dialogues, infobulles) se placent hors du <body>
+    // de l'application.
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('projet.theme', theme);
+  }
+}
+```
+
+La répartition à retenir : **le CSS sait peindre, le TypeScript sait décider.** Faire basculer les couleurs depuis le code aurait demandé de connaître, dans le service, chaque couleur de chaque composant.
+
+### Préférence système, mais choix explicite prioritaire
+
+```typescript
+private themeInitial(): Theme {
+  const memorise = localStorage.getItem('projet.theme');
+
+  // Un choix explicite l'emporte TOUJOURS : il est plus recent, et plus
+  // precis, que le reglage global du systeme.
+  if (memorise === 'clair' || memorise === 'sombre') {
+    return memorise;
+  }
+
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'sombre' : 'clair';
+}
+```
+
+`matchMedia` interroge une media-query depuis le JavaScript, exactement comme le ferait une `@media` en CSS. Respecter `prefers-color-scheme` est le comportement attendu aujourd'hui : quelqu'un qui a réglé tout son ordinateur en sombre ne s'attend pas à recevoir une page blanche.
+
+### Détection de plateforme ≠ détection de fonctionnalité
+
+```typescript
+// isPlatformBrowser dit qu'on est « dans un navigateur ». Mais le DOM simule
+// des tests en est un tres partiel, ou matchMedia n'existe pas — et le test
+// echouait sur « window.matchMedia is not a function ».
+//
+// Verifier la PLATEFORME ne dit rien de la FONCTIONNALITE. D'ou ce second
+// garde-fou, qui retombe simplement sur le theme clair.
+if (typeof window.matchMedia !== 'function') {
+  return 'clair';
+}
+```
+
+C'est un réflexe qui ressert souvent : avant d'appeler une API récente ou optionnelle (`Notification`, `IntersectionObserver`, `structuredClone`), tester **la fonction elle-même**, pas l'environnement supposé la fournir.
+
+**Dans le projet** — [`services/theme.ts`](../carnet-contact_frontend/src/app/services/theme.ts) et son test [`services/theme.spec.ts`](../carnet-contact_frontend/src/app/services/theme.spec.ts)
+
+### Le scintillement au chargement (FOUC)
+
+Il reste un problème que le service ne peut pas résoudre : entre l'affichage du HTML et le démarrage d'Angular, il s'écoule quelques dizaines de millisecondes. Pendant ce temps, aucun attribut `data-theme` n'est posé — la page s'affiche donc en clair, puis bascule. Ce flash blanc, particulièrement désagréable de nuit, porte un nom : **FOUC** (*Flash Of Unstyled Content*).
+
+La seule parade est un script **synchrone**, dans le `<head>`, exécuté avant que le navigateur ne peigne quoi que ce soit :
+
+```html
+<head>
+  <script>
+    // Volontairement minuscule, sans dependance et sans module : il doit
+    // s'executer AVANT le premier rendu. Tout ce qui retarderait son
+    // execution (defer, async, un import) reintroduirait le scintillement.
+    (function () {
+      try {
+        var memorise = localStorage.getItem('projet.theme');
+        var theme = memorise || (window.matchMedia
+          && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'sombre' : 'clair');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {
+        // localStorage peut lever (navigation privee, cookies bloques).
+        // Un theme est un confort : il ne doit JAMAIS empecher la page de
+        // s'afficher.
+      }
+    })();
+  </script>
+</head>
+```
+
+Ce script duplique volontairement la logique du service. C'est l'un des rares cas où la duplication est justifiée : les deux s'exécutent à des moments où l'autre n'existe pas.
+
+**Dans le projet** — [`src/index.html`](../carnet-contact_frontend/src/index.html)
+
+### Tester une bascule de thème
+
+Un service de thème qui garderait la bonne valeur sans l'écrire sur `<html>` laisserait la page obstinément claire. Le test doit donc vérifier l'**effet visible**, pas seulement le signal :
+
+```typescript
+it('écrit l\'attribut sur <html> et mémorise le choix', () => {
+  const service = TestBed.inject(ThemeService);
+  TestBed.tick();
+
+  service.basculer();
+  // tick() laisse les effect() s'executer : ils sont DIFFERES, pas synchrones.
+  // Sans lui, l'attribut ne serait pas encore pose.
+  TestBed.tick();
+
+  expect(document.documentElement.getAttribute('data-theme')).toBe('sombre');
+  expect(localStorage.getItem('projet.theme')).toBe('sombre');
+});
+```
+
+---
+
+## 32. Réactions et accusés de lecture
+
+Deux ajouts à la messagerie qui, sous leur air anodin, posent chacun une question de modélisation intéressante : où ranger une donnée qui appartient à une **paire** (ce message, cette personne) ? et comment envoyer au client une information qui **dépend de qui regarde** ?
+
+### Une entité de liaison
+
+Une réaction n'appartient ni au message seul, ni à l'utilisateur seul : elle appartient au **couple**. C'est le cas type d'une table de liaison — la même forme que « un étudiant inscrit à un cours », « un utilisateur qui aime une publication ».
+
+```java
+@Entity
+@Table(
+    name = "reaction",
+    uniqueConstraints = @UniqueConstraint(
+        name = "uk_reaction_message_utilisateur",
+        // LA regle metier « une seule reaction par personne et par message »,
+        // exprimee la ou elle ne peut pas etre contournee : dans le schema.
+        // Un contrôle en Java se contourne par un bug, par une autre route,
+        // ou par deux requetes simultanees ; une contrainte d'unicite, non.
+        columnNames = { "message_id", "utilisateur_id" }))
+public class Reaction {
+
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    // LAZY : on ne charge le message que si on le demande vraiment. Le defaut
+    // d'un @ManyToOne est EAGER, qui ramenerait le message ENTIER a chaque
+    // lecture de reaction (section 19).
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    private Message message;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    private Utilisateur utilisateur;
+
+    // length = 8, pas 1 ou 2 : un emoji n'est PAS un caractere. « ❤️ » compte
+    // deux points de code (le coeur, plus un selecteur de variante), et
+    // certains emojis composes en comptent davantage.
+    @Column(nullable = false, length = 8)
+    private String emoji;
+}
+```
+
+> Le nom donné à la contrainte (`uk_reaction_message_utilisateur`) n'est pas décoratif : c'est lui qui apparaîtra dans le message d'erreur de la base le jour où elle sera violée. Une contrainte anonyme donne `UK_a3f9b21` — inexploitable.
+
+**Dans le projet** — [`model/Reaction.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Reaction.java)
+
+### Valider côté serveur ce que le client propose
+
+```java
+// La liste des emojis proposes vit des DEUX cotes : celle-ci decide de ce que
+// le serveur ACCEPTE, celle du frontend de ce qu'on AFFICHE. Meme partage des
+// roles que pour la politique de mot de passe (section 27) — le client rend
+// service, le serveur fait loi.
+public static final List<String> EMOJIS_AUTORISES = List.of("👍", "❤️", "😂", "😮", "😢");
+
+// Set.copyOf : la recherche « est-ce dans la liste ? » devient immediate,
+// au lieu de parcourir la liste a chaque appel.
+private static final Set<String> EMOJIS_VALIDES = Set.copyOf(EMOJIS_AUTORISES);
+```
+
+Sans cette validation, n'importe quel client pourrait enregistrer n'importe quelle chaîne de huit caractères comme « réaction ». Une route `GET /api/messages/emojis` expose la liste, pour qu'un client puisse la lire plutôt que de la deviner.
+
+### Une seule route, trois gestes : l'idempotence
+
+Poser une réaction, en changer, la retirer : trois gestes. La tentation est d'en faire trois routes (`POST`, `PUT`, `DELETE`) et de laisser le client choisir.
+
+C'est une erreur, et voici pourquoi : le client trancherait à partir d'un affichage peut-être périmé de quelques secondes. Deux clics rapides, et les deux appels se contredisent — un `POST` arrive alors qu'une réaction existe déjà, un `DELETE` alors qu'il n'y a plus rien.
+
+```java
+// UNE route. Le client dit seulement « j'ai clique sur 👍 » ; le SERVEUR
+// compare a ce qui existe deja et en deduit le geste.
+@PutMapping("/{messageId}/reaction")
+public MessageVu reagir(...) {
+    var existante = reactionRepository.findByMessageIdAndUtilisateurId(messageId, moi.getId());
+
+    if (existante.isPresent()) {
+        if (existante.get().getEmoji().equals(demande.emoji())) {
+            reactionRepository.delete(existante.get());   // meme emoji -> on retire
+        } else {
+            existante.get().setEmoji(demande.emoji());    // autre emoji -> on remplace
+            reactionRepository.save(existante.get());
+        }
+    } else {
+        reactionRepository.save(new Reaction(message, moi, demande.emoji()));
+    }
+    ...
+}
+```
+
+L'opération devient **idempotente au sens utile** : le serveur est seul à connaître l'état, donc le résultat ne dépend jamais de ce que le client croyait savoir.
+
+`PUT` plutôt que `POST` dit d'ailleurs exactement cela : « mets la réaction de cette personne sur ce message dans tel état », et non « crée une nouvelle réaction ».
+
+### Le problème N+1
+
+Afficher un fil de cinquante messages avec leurs réactions, naïvement :
+
+```java
+for (Message m : messages) {
+    // UNE requete SQL par message. Cinquante messages = cinquante requetes,
+    // plus celle qui a ramene les messages. C'est le probleme « N+1 » : le
+    // nombre de requetes croit avec le nombre de resultats.
+    var reactions = reactionRepository.findByMessageId(m.getId());
+}
+```
+
+La correction tient en une requête :
+
+```java
+// On demande TOUTES les reactions des messages concernes d'un coup...
+var ids = messages.stream().map(Message::getId).toList();
+var toutes = reactionRepository.findByMessageIdIn(ids);
+
+// ...puis on les regroupe EN MEMOIRE par message. Une requete, quel que soit
+// le nombre de messages.
+var parMessage = toutes.stream().collect(groupingBy(r -> r.getMessage().getId()));
+```
+
+C'est un réflexe à acquérir : **dès qu'une requête apparaît à l'intérieur d'une boucle, il faut la sortir.** Le symptôme est discret en développement (une base locale de dix lignes répond vite) et brutal en production.
+
+| Méthode dérivée | Ce qu'elle génère |
+|---|---|
+| `findByMessageId(Long)` | Une requête par message — à éviter dans une boucle |
+| `findByMessageIdIn(List<Long>)` | Une seule requête `WHERE message_id IN (…)` |
+
+**Dans le projet** — [`repository/ReactionRepository.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/ReactionRepository.java)
+
+### Une réponse qui dépend de qui regarde
+
+Le client a besoin de savoir « 👍 ×3, **dont la mienne** ». Or `parMoi` ne peut pas être une colonne : la réponse n'est pas la même selon le lecteur. C'est donc au serveur de la calculer, à l'envoi.
+
+```java
+// Un record dedie a l'AFFICHAGE, distinct de l'entite. Il porte des donnees
+// que la base ne contient pas telles quelles : un total, et un booleen
+// relatif au demandeur.
+public record ReactionResume(String emoji, long nombre, boolean parMoi) {}
+
+public record MessageVu(Long id, Utilisateur expediteur, Utilisateur destinataire,
+                        String contenu, Instant dateEnvoi, boolean lu,
+                        List<ReactionResume> reactions) {}
+```
+
+```java
+// LinkedHashMap et non HashMap : elle conserve l'ordre d'INSERTION. Sans
+// cela, l'ordre des emojis sous une bulle changerait d'un rafraichissement a
+// l'autre — un scintillement inexplicable pour l'utilisateur.
+var parEmoji = new LinkedHashMap<String, List<Reaction>>();
+```
+
+Envoyer la liste nominative de qui a réagi aurait été plus « brut », mais aurait obligé chaque client à recompter, et aurait divulgué plus d'informations que nécessaire. **Un DTO envoie ce que l'affichage demande, pas ce que la base contient.**
+
+### L'accusé de lecture
+
+```java
+@Column(nullable = false)
+private boolean lu = false;
+```
+
+Le point délicat n'est pas le champ, c'est **le moment** où il bascule. Ici, ouvrir une conversation marque comme lus les messages qu'on y reçoit — le `GET` du fil a donc un effet de bord, ce qui est inhabituel pour une lecture. C'est un choix assumé : il correspond exactement à ce que « lu » veut dire pour un humain.
+
+Une conséquence à gérer côté client : le serveur vient de marquer ces messages comme lus, la pastille de non-lus doit donc suivre **immédiatement**, sans attendre le prochain tour du sondage (jusqu'à quinze secondes plus tard) :
+
+```typescript
+.subscribe(messages => {
+  this.filSignal.set(messages);
+  // Les messages de cette conversation ne sont plus « non lus ».
+  this.nonLusSignal.update(liste => liste.filter(m => m.expediteur.id !== autreId));
+});
+```
+
+### Côté affichage : ne montrer une information que là où elle veut dire quelque chose
+
+```html
+@if (estDeMoi(message.expediteur.id)) {
+  <span class="accuse" [class.accuse-lu]="message.lu">
+    <i class="pi" [class.pi-check]="!message.lu" [class.pi-check-circle]="message.lu"></i>
+    {{ message.lu ? 'Lu' : 'Envoyé' }}
+  </span>
+}
+```
+
+L'accusé ne s'affiche que sur ses **propres** messages. Sur un message reçu il ne voudrait rien dire : on sait forcément qu'on l'a lu, puisqu'on le regarde.
+
+Noter aussi que l'état se lit de **deux** manières — le mot et l'icône — et pas seulement par la couleur. Quelqu'un qui distingue mal les nuances doit pouvoir lire l'état quand même.
+
+### Regrouper les messages par journée
+
+```typescript
+// Afficher la date complete sous chaque bulle serait illisible : dans une
+// conversation, l'heure suffit, et la date ne change qu'une fois par jour.
+// L'information rare doit apparaitre rarement.
+filParJour = computed<GroupeJour[]>(() => {
+  const groupes: GroupeJour[] = [];
+
+  for (const message of this.fil()) {
+    const date = new Date(message.dateEnvoi);
+    // toDateString() rabote l'heure : deux messages du meme jour donnent la
+    // meme cle, quelle que soit la minute.
+    const cle = date.toDateString();
+
+    const dernier = groupes.at(-1);
+    if (dernier?.cle === cle) {
+      dernier.messages.push(message);
+    } else {
+      groupes.push({ cle, libelle: this.libelleJour(date), messages: [message] });
+    }
+  }
+
+  return groupes;
+});
+```
+
+```typescript
+// « Aujourd'hui » et « Hier » plutot qu'une date : « 11/09/2026 » demande un
+// calcul mental pour savoir si c'etait ce matin.
+private libelleJour(date: Date): string {
+  if (date.toDateString() === new Date().toDateString()) return "Aujourd'hui";
+  ...
+  // toLocaleDateString laisse le NAVIGATEUR formater selon la langue de
+  // l'utilisateur : « lundi 8 septembre », sans qu'on ait a ecrire le nom
+  // des mois nulle part.
+  return date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+```
+
+Le découpage est fait dans le composant, pas dans le gabarit : **un gabarit décrit ce qu'on voit, il ne calcule pas.**
+
+**Dans le projet** — [`pages/messages/messages.ts`](../carnet-contact_frontend/src/app/pages/messages/messages.ts), [`pages/messages/messages.html`](../carnet-contact_frontend/src/app/pages/messages/messages.html) et [`controller/MessageController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/MessageController.java)
+
+### Un seul état pour une seule palette ouverte
+
+```typescript
+// Un signal pour TOUTE la liste, et non un booleen par bulle : c'est ce qui
+// garantit qu'UNE SEULE palette est ouverte a la fois. Avec un etat par
+// message, il faudrait penser a refermer les autres a chaque ouverture — et
+// l'oubli finit toujours par arriver.
+paletteOuverte = signal<number | null>(null);
+
+basculerPalette(messageId: number): void {
+  this.paletteOuverte.update(ouvert => (ouvert === messageId ? null : messageId));
+}
+```
+
+C'est une forme générale utile : quand une contrainte dit « un seul à la fois », l'exprimer par **un seul état partagé** plutôt que par N états qu'il faudrait synchroniser.
+
+### Positionner sans casser le défilement
+
+La palette d'emojis est placée **dans le flux**, et non en `position: absolute`. La raison est concrète : la zone du fil a `overflow-y: auto`, et tout ce qui déborde de ses bords y est rogné — une palette flottant au-dessus de la première bulle disparaîtrait à moitié.
+
+```css
+/* Trois niveaux, chacun avec un role, et aucun positionnement absolu :
+   .bloc-bulle   : la colonne (bulle, palette, reactions) et le cote d'affichage
+   .rangee-bulle : la bulle et son bouton de reaction, cote a cote
+   .bulle        : le fond colore */
+
+/* row-reverse renvoie le bouton de l'autre cote sans toucher au HTML : la
+   bulle reste le premier element du document, donc le premier lu a voix haute
+   par un lecteur d'ecran. L'ordre visuel et l'ordre logique n'ont pas a etre
+   identiques. */
+.bloc-bulle.de-moi .rangee-bulle { flex-direction: row-reverse; }
+```
+
+```css
+/* Le bouton reste visible (et non cache jusqu'au survol) : sur un ecran
+   tactile il n'y a pas de survol — un bouton qui n'apparait qu'au :hover
+   n'existe tout simplement pas sur mobile. On le rend discret, pas absent. */
+.ouvrir-palette { opacity: 0.4; }
+.rangee-bulle:hover .ouvrir-palette,
+.ouvrir-palette:focus-visible { opacity: 1; }
+```
+
+**Dans le projet** — [`pages/messages/messages.css`](../carnet-contact_frontend/src/app/pages/messages/messages.css)
+
+---
+
+## 33. Backend Spring Boot
 
 Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
 
@@ -4591,7 +5639,7 @@ Le principe est exactement le même que l'injection de dépendances vue côté A
 
 ---
 
-## 30. Git et GitHub
+## 34. Git et GitHub
 
 Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
 
@@ -4648,7 +5696,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 
 ---
 
-## 31. Pense-bête de dépannage
+## 35. Pense-bête de dépannage
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
@@ -4672,12 +5720,12 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Une liste ne se met pas à jour après un ajout ou une suppression faits par un autre composant | Chaque composant possède sa propre copie de la donnée dans un signal local | Déplacer la donnée dans le service (signal partagé, voir section 12) plutôt que de recharger la page |
 | Le formulaire d'édition reste vide alors que la fiche s'affiche bien | Formulaire pré-rempli à la construction, avant l'arrivée des données du signal partagé | Pré-remplir dans un `effect()` qui réagit au signal, pas dans le `constructor` directement (section 14) |
 | Le formulaire d'édition efface la saisie en cours de temps en temps | Un `effect()` de pré-remplissage se réexécute à chaque changement du signal (ex : rechargement de la liste) | Ajouter un drapeau booléen : ne `patchValue()` qu'une seule fois |
-| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 29) ; regarder la ligne `preflight` dans l'onglet Réseau |
+| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 33) ; regarder la ligne `preflight` dans l'onglet Réseau |
 | Modification enregistrée côté serveur mais la fiche affiche encore l'ancienne valeur | Le signal partagé n'a pas été mis à jour après le `PUT` | Dans le service, `.update()` avec `.map()` pour remplacer l'élément modifié par la réponse du serveur |
 | `NG0203` / `inject() must be called from an injection context` sur un `effect()` | `effect()` appelé hors constructeur / hors champ de classe | Le déplacer dans le `constructor` du composant |
 | Backend éteint ou en erreur : liste vide, formulaire sans réaction, aucun message | `.subscribe()` n'a qu'un callback de succès, l'erreur du flux n'est traitée nulle part | `.pipe(catchError(...))` dans le service + un signal d'erreur affiché (section 15) |
 | `catchError` provoque `Type 'void' is not assignable to type 'ObservableInput<...>'` | Le callback de `catchError` ne retourne pas d'Observable | Retourner `of(valeurDeRepli)`, `EMPTY`, ou `throwError(() => err)` |
-| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 29) |
+| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 33) |
 | Une modification du code (nouveau signal, `delay()` ajouté...) reste sans effet dans le navigateur | Le rechargement à chaud de `ng serve` n'a pas pris (fréquent sous Windows / avec le SSR) | `Ctrl + C` sur `ng serve`, `npm start`, attendre `bundle generation complete`, puis `Ctrl + Shift + R` dans le navigateur |
 | L'indicateur de chargement ne s'affiche jamais au rafraîchissement de la page | Le `GET` initial part côté serveur (SSR) : `chargement` passe à `true` puis `false` avant l'envoi du HTML | Normal ; l'indicateur n'apparaît que sur les requêtes déclenchées par un clic (ajout, modif, suppression), section 16 |
 | L'indicateur de chargement reste allumé après une erreur réseau | `set(false)` placé seulement dans `.subscribe(next)`, qui ne s'exécute pas en cas d'erreur | Le mettre dans `finalize()` du `.pipe()`, qui s'exécute quelle que soit l'issue (section 16) |
@@ -4740,3 +5788,20 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Dix notifications système empilées après une absence | Chaque appel crée une bulle distincte | Leur donner le même `tag` : elles se remplacent au lieu de s'empiler (section 28) |
 | Une notification système s'affiche alors qu'on a la page sous les yeux | Le canal est choisi sans regarder si l'onglet est actif | Conditionner à `document.hidden`, et se rabattre sur un bandeau sinon (section 28) |
 | Un test à minuteurs simulés se bloque sur une requête HTTP qui ne part jamais | `advanceTimersByTime` n'attend pas la file des micro-tâches | Utiliser la variante `await vi.advanceTimersByTimeAsync(ms)` (section 28) |
+| `Could not find stylesheet file './xxx.css'` | Le `styleUrl` d'un composant pointe vers un fichier qui n'existe pas encore | Créer le fichier, même vide — Angular refuse de compiler tant qu'il manque |
+| `Could not resolve "@angular/animations/browser"` | `provideAnimationsAsync()` est déclaré, mais le paquet n'est pas installé | Vérifier si la bibliothèque en a réellement besoin (`grep -r "@angular/animations" node_modules/primeng/`) ; PrimeNG 21 ne l'utilise plus — retirer le provider plutôt qu'installer un paquet déprécié (section 30) |
+| `npm install @angular/x` échoue sur `peer @angular/core@21.2.23` alors que 21.2.22 est installé | Les paquets Angular s'exigent mutuellement **à la version exacte**, pas en `^` | Installer la version identique à celle de `@angular/core` : `npm install @angular/animations@21.2.22` |
+| `primeng@22` refuse de s'installer | Les majeures de PrimeNG suivent celles d'Angular | Installer la majeure correspondante (`primeng@21` pour Angular 21) (section 30) |
+| Tous les `p-button` sortent en bleu uni, leur `severity` ignorée | Une règle globale sans couche (`button { … }`) écrase l'habillage de PrimeNG, rangé dans `@layer primeng` — le hors-couche bat toujours une couche | Déclarer `@layer theme, base, primeng;` et placer ses styles de balises dans `@layer base` (section 30) |
+| Une règle CSS de composant ne touche pas l'intérieur d'un `p-table` / `p-paginator` | L'encapsulation Angular n'attache son attribut qu'aux éléments du gabarit, pas à ceux fabriqués par la bibliothèque | Préfixer par `:host ::ng-deep` (section 30) |
+| `window.matchMedia is not a function` dans les tests | `isPlatformBrowser` est vrai, mais le DOM simulé ne fournit pas cette API | Tester la fonction elle-même : `typeof window.matchMedia !== 'function'` (section 31) |
+| La page s'affiche en clair une fraction de seconde avant de passer en sombre | Le thème n'est posé qu'au démarrage d'Angular, après le premier rendu (FOUC) | Un script synchrone dans le `<head>` qui pose `data-theme` avant toute peinture (section 31) |
+| La page est sombre mais les ascenseurs restent blancs | Le navigateur dessine lui-même certains éléments, hors de portée du CSS | Déclarer `color-scheme: dark` sur le thème sombre (section 31) |
+| Un élément reste clair en mode sombre | Une couleur écrite en dur quelque part (`#fff`) au lieu d'une variable | Chercher les couleurs littérales dans les feuilles de composants (section 31) |
+| `bundle initial exceeded maximum budget` après l'ajout d'une bibliothèque | Le budget d'`angular.json` est une alarme réglée à la main, pas une limite technique | Différer les pages lourdes et rares avec `loadComponent`, puis ajuster le budget en connaissance de cause (section 30) |
+| Une palette ou une infobulle est coupée en bord de liste | Le conteneur a `overflow-y: auto`, qui rogne tout ce qui déborde | Placer l'élément dans le flux plutôt qu'en `position: absolute` (section 32) |
+| `pTooltip` n'affiche rien | `TooltipModule` absent des `imports` du composant | L'ajouter ; une directive PrimeNG non importée est silencieusement ignorée |
+| `hasRole("ROLE_ADMIN")` refuse un administrateur | `hasRole` ajoute déjà le préfixe : il cherche `ROLE_ROLE_ADMIN` | Écrire `hasRole("ADMIN")`, ou `hasAuthority("ROLE_ADMIN")` (section 29) |
+| Un compte rétrogradé garde ses droits quelques minutes | Le rôle voyage dans le jeton, valable jusqu'à son expiration | Comportement attendu du sans-état ; révoquer les jetons de rafraîchissement et vérifier l'état réel en base pour les actions destructrices (section 29) |
+| `curl -d '{"emoji":"👍"}'` renvoie 400 sous Git Bash alors que le serveur est correct | Le shell Windows altère les caractères non-ASCII de la ligne de commande | Écrire le corps dans un fichier et utiliser `--data-binary @fichier.json`, ou échapper en séquences JSON (`\uD83D\uDC4D`) |
+| Un résultat contredit le code qu'on vient d'écrire | Ce n'est pas ce code qui tourne : ancienne instance encore démarrée sur le port | `netstat -ano \| grep :8080` avant de conclure ; redémarrer, ou utiliser un autre port |
