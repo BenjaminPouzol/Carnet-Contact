@@ -27,9 +27,16 @@ Document de référence détaillé, organisé par notion. Chaque section combine
 19. [Relations entre entités JPA](#19-relations-entre-entités-jpa)
 20. [Composants réutilisables : `input()` et boucles de configuration](#20-composants-réutilisables--input-et-boucles-de-configuration)
 21. [Mise en forme : variables CSS et cohérence visuelle](#21-mise-en-forme--variables-css-et-cohérence-visuelle)
-22. [Backend Spring Boot](#22-backend-spring-boot)
-23. [Git et GitHub](#23-git-et-github)
-24. [Pense-bête de dépannage](#24-pense-bête-de-dépannage)
+22. [Pagination et recherche côté serveur](#22-pagination-et-recherche-côté-serveur)
+23. [Contexte d'une requête HTTP (`HttpContext`)](#23-contexte-dune-requête-http-httpcontext)
+24. [Renouvellement du jeton d'accès](#24-renouvellement-du-jeton-daccès)
+25. [Rafraîchissement automatique (sondage périodique)](#25-rafraîchissement-automatique-sondage-périodique)
+26. [Tests automatisés](#26-tests-automatisés)
+27. [Saisie et validation d'un mot de passe](#27-saisie-et-validation-dun-mot-de-passe)
+28. [Notifications du navigateur](#28-notifications-du-navigateur)
+29. [Backend Spring Boot](#29-backend-spring-boot)
+30. [Git et GitHub](#30-git-et-github)
+31. [Pense-bête de dépannage](#31-pense-bête-de-dépannage)
 
 ---
 
@@ -270,6 +277,8 @@ contact = computed(() =>
   this.contactService.contacts().find(c => c.id === this.contactId)
 );
 ```
+
+> **Note de mise à jour.** Ce `computed()` a depuis été retiré du projet : la pagination (section 22) a rendu fausse l'hypothèse dont il dépendait — le signal `contacts` ne contient plus *tous* les contacts, seulement une page. L'exemple reste juste en tant qu'illustration de `computed()` ; c'est son hypothèse de départ qui a changé, pas l'opérateur. `ContactService` conserve d'ailleurs deux `computed()` bien vivants (`premierePage`, `dernierePage`).
 
 | | `signal()` | `computed()` |
 |---|---|---|
@@ -1295,6 +1304,8 @@ ngOnInit(): void {
 }
 ```
 
+> **Note de mise à jour.** Depuis la pagination (section 22), cette page appelle `chargerContact(id)` et lit un signal dédié `contactCourant`, au lieu de fouiller la liste. Le raisonnement de cette section reste entier — lire l'id dans l'URL, afficher un signal, laisser le gabarit se réafficher tout seul à l'arrivée de la réponse ; seule la **source** du signal a changé, parce que la liste ne contient plus qu'une page.
+
 ```html
 @if (contact(); as c) {
   <h2>{{ c.prenom }} {{ c.nom }}</h2>
@@ -1526,6 +1537,8 @@ onSubmit(): void {
 
 Le template [`contact-edit.html`](../carnet-contact_frontend/src/app/pages/contact-edit/contact-edit.html) est le même formulaire réactif que `contact-form.html`, avec un bouton « Enregistrer » et un lien « Annuler » qui ramène à la fiche.
 
+> **Note de mise à jour.** Comme la page de détail, celle-ci lit désormais le signal `contactCourant` du service et appelle `chargerContact(id)` dans son `ngOnInit` — conséquence de la pagination (section 22). L'`effect()` de pré-remplissage et son drapeau `formulaireRempli`, eux, n'ont pas bougé d'une ligne : c'est exactement le mécanisme décrit ci-dessus, et un test le protège désormais (section 26).
+
 > `modifierContact` a ensuite reçu un `.pipe(catchError(...))`, comme les autres méthodes du service — voir section 15.
 
 ## 15. Gestion des erreurs HTTP (`catchError`)
@@ -1669,7 +1682,7 @@ protected contactService = inject(ContactService);
 
 ### Pourquoi le POST met plus longtemps à signaler l'échec que le GET
 
-Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 22). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
+Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 29). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
 
 ## 16. Indicateur de chargement (`finalize`)
 
@@ -2292,6 +2305,8 @@ public Contact creer(@RequestBody Contact contact, @AuthenticationPrincipal Stri
 
 Pour les accès par identifiant, la protection tient dans la requête elle-même : on cherche par id **et** par propriétaire. Demander la ressource 42 quand elle n'est pas à soi ne renvoie pas 42 — cela ne renvoie rien.
 
+> **Note de mise à jour.** Le `GET` ci-dessus renvoie aujourd'hui une page plutôt qu'une liste (section 22), et l'appel au repository a changé de nom. Le point de cette sous-section est ailleurs et reste intact : quelle que soit la requête, l'identifiant du propriétaire vient du **jeton**, jamais de la requête HTTP. C'est exactement ce que vérifient les tests d'isolation de la section 26.
+
 ```java
 Optional<Contact> findByIdAndProprietaireId(Long id, Long proprietaireId);
 ```
@@ -2518,6 +2533,8 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
     Optional<Contact> findByIdAndProprietaireId(Long id, Long proprietaireId);
 }
 ```
+
+> **Note de mise à jour.** La première de ces deux méthodes n'existe plus dans le projet : elle a été remplacée par une `@Query` paginée lors de l'ajout de la recherche (section 22), la dérivation par nom ne sachant exprimer ni « nom OU prénom OU email » ni un terme de recherche optionnel. C'est précisément la limite décrite dans la sous-section suivante. La seconde, `findByIdAndProprietaireId`, est toujours là — comme `existsByEmail` et `findByDestinataireIdAndLuFalse`.
 
 | Fragment du nom | Traduction SQL |
 |---|---|
@@ -2855,7 +2872,1582 @@ On peut styler l'un comme l'autre, mais il faut choisir la balise selon le compo
 .bulle.de-moi { align-self: flex-end; color: #fff; background: var(--bleu); }
 ```
 
-## 22. Backend Spring Boot
+## 22. Pagination et recherche côté serveur
+
+### Le problème : tout charger, toujours
+
+Jusqu'ici, `GET /api/contacts` renvoyait **tous** les contacts. C'est parfait avec douze contacts, insoutenable avec dix mille : le serveur les lit tous en mémoire, les convertit tous en JSON, le réseau les transporte tous, le navigateur les affiche tous — pour montrer les six premiers.
+
+La pagination consiste à ne demander qu'une **tranche**. Et pendant qu'on y est, à la filtrer : chercher « dupont » dans une liste qu'on a déjà entièrement téléchargée est possible côté client, mais cela suppose justement de l'avoir téléchargée. Les deux problèmes se règlent au même endroit, dans la même requête.
+
+### Côté serveur : `Pageable` et `Page<T>`
+
+Spring Data reconnaît un paramètre de type `Pageable` et se charge lui-même de traduire la demande en `LIMIT` / `OFFSET` / `ORDER BY`. La requête qu'on écrit ne parle donc **pas** de pages : on décrit *quelles lignes*, le découpage vient par-dessus.
+
+```java
+public interface RessourceRepository extends JpaRepository<Ressource, Long> {
+
+    // Pageable n'est pas un paramètre comme les autres : Spring Data le
+    // reconnaît et ajoute lui-même le découpage à la requête.
+    // Le terme vide est traité DANS la requête plutôt que par une seconde
+    // méthode « sans filtre » : un seul chemin de code à maintenir.
+    @Query("""
+            SELECT r FROM Ressource r
+            WHERE r.proprietaire.id = :proprietaireId
+              AND (:recherche = ''
+                   OR LOWER(r.titre) LIKE LOWER(CONCAT('%', :recherche, '%')))
+            """)
+    Page<Ressource> rechercher(
+            @Param("proprietaireId") Long proprietaireId,
+            @Param("recherche") String recherche,
+            Pageable pagination);
+}
+```
+
+| Élément | Rôle |
+|---|---|
+| `Pageable` | La demande : quel numéro de page, quelle taille, quel tri |
+| `PageRequest.of(page, taille, Sort)` | Fabrique un `Pageable` |
+| `Page<T>` | La réponse : le contenu **plus** le total et le nombre de pages |
+| `page.getContent()` | Les éléments de la tranche |
+| `page.getTotalElements()` | Combien d'éléments au total, toutes pages confondues |
+| `page.getTotalPages()` | Combien de pages, d'après la taille demandée |
+| `LIKE CONCAT('%', :t, '%')` | « contient » ; `LOWER()` des deux côtés pour ignorer la casse |
+
+Dans le contrôleur, les critères arrivent par la **query string**, et non par le chemin :
+
+```java
+/**
+ * @RequestParam lit un paramètre de la query string
+ * (/api/ressources?page=2&recherche=x), là où @PathVariable lit un morceau du
+ * chemin. Règle habituelle : le chemin IDENTIFIE la ressource, la query string
+ * la FILTRE ou la DÉCOUPE.
+ *
+ * defaultValue évite d'avoir à gérer le cas absent : un appel sans paramètre
+ * reste valide et donne la première page.
+ */
+@GetMapping
+public PageRessources lister(
+        @RequestParam(defaultValue = "") String recherche,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "6") int taille) {
+
+    // Le client fixe la taille, donc on la borne : sans ce garde-fou,
+    // ?taille=1000000 ferait charger toute la table d'un coup.
+    int tailleBornee = Math.clamp(taille, 1, 50);
+
+    Page<Ressource> resultat = repository.rechercher(
+            /* ... */, recherche.trim(),
+            // Le tri appartient à la pagination : trier APRÈS avoir découpé
+            // n'aurait aucun sens.
+            PageRequest.of(Math.max(0, page), tailleBornee, Sort.by("titre").ascending()));
+
+    return new PageRessources(
+            resultat.getContent(), resultat.getNumber(), resultat.getSize(),
+            resultat.getTotalElements(), resultat.getTotalPages());
+}
+```
+
+### Pourquoi un DTO plutôt que le `Page<T>` de Spring
+
+On pourrait renvoyer directement l'objet `Page<T>`. C'est déconseillé : il sérialise une douzaine de champs internes (`pageable`, `sort`, `first`, `numberOfElements`…) dont la forme n'est pas garantie d'une version de Spring à l'autre. Un `record` maison **fige le contrat d'API** et ne publie que ce que le client utilise vraiment.
+
+```java
+// Un DTO de réponse : cinq champs choisis, et rien d'autre.
+public record PageRessources(
+        List<Ressource> contenu, int page, int taille, long total, int totalPages) {}
+```
+
+### La conséquence oubliée : découper oblige à offrir l'accès unitaire
+
+Une page de détail qui cherchait son élément dans la liste déjà chargée devient **fausse** dès que la liste est paginée : l'élément demandé peut se trouver sur une autre page. Il faut donc ajouter un `GET /api/ressources/{id}`. Ce n'est pas un détail cosmétique — c'est la conséquence logique directe du découpage.
+
+```java
+@GetMapping("/{id}")
+public Ressource une(@PathVariable Long id, @AuthenticationPrincipal String email) {
+    return repository.findByIdAndProprietaireId(id, /* ... */)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+}
+```
+
+### Côté Angular : `params`, `debounceTime`, `switchMap`
+
+Trois notions arrivent ensemble, chacune réglant un problème distinct de la saisie au clavier.
+
+```typescript
+// 1. Les critères de la page vivent dans le SERVICE, pas dans le composant :
+//    après un ajout, c'est lui qui doit savoir quelle page recharger.
+private rechercheSignal = signal('');
+private pageSignal = signal(0);
+
+// 2. Un Subject : un Observable qu'on alimente à la main avec next().
+//    Il sert de point de rendez-vous entre des appels ponctuels et UN flux
+//    durable, monté une fois dans le constructeur.
+private demandes = new Subject<void>();
+
+constructor() {
+  this.demandes.pipe(
+    // 3. switchMap : chaque nouvelle demande ANNULE la précédente, réponse
+    //    comprise. Sans lui, une réponse lente à « dup » pourrait arriver
+    //    APRÈS celle de « dupont » et réécrire la liste avec un résultat périmé.
+    switchMap(() => this.http.get<PageRessources>(this.apiUrl, {
+      // Angular assemble et ÉCHAPPE la query string : ?recherche=x&page=0
+      params: { recherche: this.rechercheSignal(), page: this.pageSignal(), taille: 6 }
+    }).pipe(
+      // catchError À L'INTÉRIEUR du switchMap — c'est capital. À l'extérieur,
+      // il attraperait l'erreur du flux EXTERNE, qui se terminerait alors
+      // définitivement : la première panne réseau condamnerait la recherche
+      // pour le reste de la session.
+      catchError(() => EMPTY)
+    ))
+  ).subscribe(page => { /* remplir les signaux */ });
+}
+
+rechercher(terme: string): void {
+  this.rechercheSignal.set(terme);
+  // Sans cette remise à zéro, chercher depuis la page 3 afficherait une page
+  // vide : trois résultats existent, mais on en demande les 19e à 24e.
+  this.pageSignal.set(0);
+  this.demandes.next();
+}
+```
+
+Dans le composant, deux opérateurs de plus filtrent la frappe avant qu'elle n'atteigne le réseau :
+
+```typescript
+champRecherche = new FormControl('', { nonNullable: true });
+
+constructor() {
+  this.champRecherche.valueChanges.pipe(
+    // N'émettre qu'après 300 ms de silence. Sans lui, taper « dupont »
+    // lancerait six requêtes — une par lettre — dont cinq déjà périmées.
+    debounceTime(300),
+    // Ignorer une valeur identique à la précédente (taper une lettre puis
+    // l'effacer pendant le délai).
+    distinctUntilChanged(),
+    // Se désabonner à la destruction du composant. Sans argument, il exige un
+    // contexte d'injection — le constructeur en est un.
+    takeUntilDestroyed()
+  ).subscribe(terme => this.service.rechercher(terme));
+}
+```
+
+| Opérateur | Problème qu'il règle |
+|---|---|
+| `debounceTime(ms)` | Une requête par frappe de touche |
+| `distinctUntilChanged()` | Une requête pour une valeur qui n'a pas changé |
+| `switchMap(fn)` | Une réponse périmée qui écrase une réponse récente |
+| `takeUntilDestroyed()` | Un abonnement qui survit au composant |
+| `Subject` | Transformer des appels ponctuels en un flux unique |
+
+### Dans le projet
+
+**Requête paginée** — [`carnet-contact-backend/src/main/java/.../repository/ContactRepository.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/ContactRepository.java)
+
+```java
+@Query("""
+        SELECT c FROM Contact c
+        WHERE c.proprietaire.id = :proprietaireId
+          AND (:recherche = ''
+               OR LOWER(c.nom)    LIKE LOWER(CONCAT('%', :recherche, '%'))
+               OR LOWER(c.prenom) LIKE LOWER(CONCAT('%', :recherche, '%'))
+               OR LOWER(c.email)  LIKE LOWER(CONCAT('%', :recherche, '%')))
+        """)
+Page<Contact> rechercher(
+        @Param("proprietaireId") Long proprietaireId,
+        @Param("recherche") String recherche,
+        Pageable pagination);
+```
+
+> **Note de mise à jour.** `findByProprietaireIdOrderByNomAsc(...)`, cité en sections 18 et 19 comme exemple de requête dérivée, a été **remplacé** par cette méthode : la dérivation par nom ne sait pas exprimer « nom OU prénom OU email », ni recevoir un `Pageable` avec un terme optionnel. Les autres exemples de requêtes dérivées de la section 19 (`findByIdAndProprietaireId`, `existsByEmail`, `findByDestinataireIdAndLuFalse`) restent d'actualité.
+
+**Contrôleur** — [`carnet-contact-backend/src/main/java/.../controller/ContactController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/ContactController.java)
+
+```java
+public record PageContacts(
+        List<Contact> contenu, int page, int taille, long total, int totalPages) {}
+
+@GetMapping
+public PageContacts getMesContacts(
+        @AuthenticationPrincipal String email,
+        @RequestParam(defaultValue = "") String recherche,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "6") int taille) {
+
+    int tailleBornee = Math.clamp(taille, 1, 50);
+    Page<Contact> resultat = contactRepository.rechercher(
+            utilisateurConnecte(email).getId(), recherche.trim(),
+            PageRequest.of(Math.max(0, page), tailleBornee, Sort.by("nom").ascending()));
+
+    return new PageContacts(resultat.getContent(), resultat.getNumber(),
+            resultat.getSize(), resultat.getTotalElements(), resultat.getTotalPages());
+}
+
+// Nouveau : la page de détail ne peut plus fouiller la liste, qui ne contient
+// plus qu'une page.
+@GetMapping("/{id}")
+public Contact getContact(@PathVariable Long id, @AuthenticationPrincipal String email) {
+    return contactRepository
+            .findByIdAndProprietaireId(id, utilisateurConnecte(email).getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+}
+```
+
+**Service Angular** — [`carnet-contact_frontend/src/app/services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts)
+
+Conséquence directe du découpage : `addContact` et `deleteContact` ne peuvent plus modifier le signal à la main (comme en section 12), parce que la répartition en pages est calculée par le serveur.
+
+```typescript
+addContact(contact: Contact): void {
+  this.http.post<Contact>(this.apiUrl, contact, { /* ... */ }).pipe(
+    catchError(() => EMPTY)
+  ).subscribe(() => {
+    // Selon son nom, le nouveau contact appartient peut-être à une autre page,
+    // et le total a changé de toute façon.
+    this.chargerContacts();
+  });
+}
+```
+
+**Page de détail** — [`carnet-contact_frontend/src/app/pages/contact-detail/contact-detail.ts`](../carnet-contact_frontend/src/app/pages/contact-detail/contact-detail.ts)
+
+```typescript
+// Avant : computed() qui cherchait dans le signal partagé (section 13).
+// Depuis la pagination, la liste ne contient plus que six contacts : la page
+// réclame désormais sa propre fiche. Le principe est inchangé — le gabarit lit
+// un signal et se réaffiche quand la réponse arrive — seule la source diffère.
+contact = this.contactService.contactCourant;
+
+ngOnInit(): void {
+  this.contactService.chargerContact(this.contactId);
+}
+```
+
+**Champ de recherche et pagination** — [`carnet-contact_frontend/src/app/components/contact-list/contact-list.ts`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.ts), [`contact-list.html`](../carnet-contact_frontend/src/app/components/contact-list/contact-list.html)
+
+```html
+@if (totalPages() > 1) {
+  <nav class="pagination" aria-label="Pagination des contacts">
+    <button (click)="pagePrecedente()" [disabled]="premierePage() || chargement()">← Précédent</button>
+    <span>Page {{ page() + 1 }} sur {{ totalPages() }}</span>
+    <button (click)="pageSuivante()" [disabled]="dernierePage() || chargement()">Suivant →</button>
+  </nav>
+}
+```
+
+---
+
+## 23. Contexte d'une requête HTTP (`HttpContext`)
+
+### Le problème : l'intercepteur ne sait pas ce qu'il intercepte
+
+La section 17 a sorti la gestion d'erreur des services, et c'était un gain. Mais cela a coûté quelque chose : l'intercepteur ne connaît que le **code de statut**, pas l'intention. « Erreur interne du serveur (500) » a remplacé « Impossible d'ajouter le contact ». Exact, mais muet sur ce que l'utilisateur venait de tenter.
+
+La tentation serait de remettre un `catchError` métier dans chaque service — et de recréer exactement la duplication qu'on venait de supprimer. Le **contexte** offre la troisième voie : le service déclare *une donnée* (ce qu'il était en train de faire), l'intercepteur garde *toute la logique*.
+
+### `HttpContextToken` : une valise attachée à la requête
+
+```typescript
+// La fonction passée donne la valeur PAR DÉFAUT, utilisée quand personne n'a
+// rien attaché. Le contexte n'est donc jamais « absent » : il y a toujours une
+// valeur à lire, ce qui évite les tests de nullité partout.
+export const LIBELLE_ACTION = new HttpContextToken<string | null>(() => null);
+export const DISCRET = new HttpContextToken<boolean>(() => false);
+
+// Raccourci de construction : sans lui, chaque appel s'écrirait
+// `{ context: new HttpContext().set(LIBELLE_ACTION, '…') }` — exact, mais
+// assez verbeux pour décourager de s'en servir.
+export function contexte(options: { libelle?: string; discret?: boolean } = {}): HttpContext {
+  let resultat = new HttpContext();
+  if (options.libelle !== undefined) resultat = resultat.set(LIBELLE_ACTION, options.libelle);
+  if (options.discret !== undefined) resultat = resultat.set(DISCRET, options.discret);
+  return resultat;
+}
+```
+
+**Pourquoi pas un simple en-tête HTTP ?** Parce qu'un en-tête part sur le réseau : on enverrait au serveur du texte français qui ne le regarde pas, à chaque requête. Le contexte, lui, ne quitte jamais le navigateur — c'est un canal entre le code appelant et les intercepteurs, rien de plus.
+
+### Poser, puis lire
+
+```typescript
+// Côté appelant : une option de plus, à côté de params et headers.
+this.http.post<Ressource>(url, corps, {
+  context: contexte({ libelle: "Impossible d'ajouter la ressource" })
+});
+
+// Côté intercepteur : req.context.get(JETON) rend toujours une valeur.
+const libelle = req.context.get(LIBELLE_ACTION);
+const estDiscret = req.context.get(DISCRET);
+```
+
+| Élément | Rôle |
+|---|---|
+| `new HttpContextToken<T>(() => défaut)` | Déclare une clé typée, avec sa valeur de repli |
+| `new HttpContext().set(jeton, valeur)` | Construit un contexte (immuable : `set` rend une **copie**) |
+| `req.context.get(jeton)` | Lit la valeur, ou le défaut si rien n'a été posé |
+| `{ context: … }` | L'option à passer à `get`/`post`/`put`/`delete` |
+
+### Recomposer le message
+
+L'astuce est de découper le message en deux moitiés, chacune fournie par celui qui la connaît :
+
+```typescript
+// La RAISON technique, formulée comme un fragment de phrase (pas de majuscule,
+// pas de point) : elle est destinée à être recollée derrière le libellé.
+function raisonTechnique(erreur: HttpErrorResponse): string {
+  switch (erreur.status) {
+    case 0:   return 'le serveur est injoignable';
+    case 404: return 'la ressource est introuvable (404)';
+    case 500: return 'le serveur a rencontré une erreur interne (500)';
+    default:  return `une erreur inattendue s'est produite (${erreur.status})`;
+  }
+}
+
+function messagePour(erreur: HttpErrorResponse, libelle: string | null): string {
+  const raison = raisonTechnique(erreur);
+  // Avec libellé : « Impossible d'ajouter la ressource : le serveur est injoignable. »
+  if (libelle) return `${libelle} : ${raison}.`;
+  // Sans libellé : « Le serveur est injoignable. »
+  return raison.charAt(0).toUpperCase() + raison.slice(1) + '.';
+}
+```
+
+Le service fournit la moitié qu'il est seul à connaître (l'intention), l'intercepteur fournit celle qu'il est seul à connaître (le statut). Aucun des deux ne fait le travail de l'autre — et ajouter un cinquième appel ne demande qu'une chaîne de caractères, pas un bloc de gestion d'erreur.
+
+### Le second usage : les requêtes que l'utilisateur n'a pas demandées
+
+Le drapeau `discret` répond à un besoin différent, apparu avec le rafraîchissement automatique (section 25) : une requête de fond ne doit ni allumer l'indicateur de chargement, ni afficher de bannière d'erreur.
+
+```typescript
+// Dans l'intercepteur de chargement : sortie anticipée.
+if (req.context.get(DISCRET)) {
+  return next(req);   // on transmet quand même — un intercepteur qui n'appelle
+}                     // pas next() bloque la requête pour de bon
+```
+
+### Dans le projet
+
+**Les deux jetons** — [`carnet-contact_frontend/src/app/interceptors/http-contexte.ts`](../carnet-contact_frontend/src/app/interceptors/http-contexte.ts)
+
+**Lecture** — [`carnet-contact_frontend/src/app/interceptors/erreur-interceptor.ts`](../carnet-contact_frontend/src/app/interceptors/erreur-interceptor.ts)
+
+```typescript
+const estDiscret = req.context.get(DISCRET);
+
+if (!estDiscret) {
+  etatHttp.effacerErreur();
+}
+
+return next(req).pipe(
+  catchError((erreur: HttpErrorResponse) => {
+    if (!estAppelAuth && !estDiscret) {
+      etatHttp.signalerErreur(messagePour(erreur, req.context.get(LIBELLE_ACTION)));
+    }
+    return throwError(() => erreur);
+  })
+);
+```
+
+**Écriture** — [`carnet-contact_frontend/src/app/services/contact.ts`](../carnet-contact_frontend/src/app/services/contact.ts)
+
+```typescript
+deleteContact(id: number): void {
+  this.http.delete<void>(`${this.apiUrl}/${id}`, {
+    context: contexte({ libelle: 'Impossible de supprimer le contact' })
+  }).pipe(catchError(() => EMPTY)).subscribe(() => this.chargerContacts());
+}
+```
+
+---
+
+## 24. Renouvellement du jeton d'accès
+
+### Le problème : un JWT ne s'annule pas
+
+Un JWT est vérifié par un calcul de signature, sans rien demander à la base — c'est ce qui le rend rapide, et c'est exactement ce qui le rend **irrévocable**. Tant qu'il n'a pas expiré, il ouvre la porte, même si le compte a été compromis entre-temps. Sa durée de vie *est* la durée pendant laquelle un vol reste exploitable.
+
+La parade est de lui donner une vie courte : quinze minutes au lieu de vingt-quatre heures. Mais personne ne veut retaper son mot de passe quatre fois par heure. D'où un **second jeton**, long et lui, révocable.
+
+| | Jeton d'accès | Jeton de rafraîchissement |
+|---|---|---|
+| Forme | JWT signé | Valeur aléatoire « opaque » (rien à lire dedans) |
+| Durée | 15 minutes | 7 jours |
+| Stocké côté serveur | Non | **Oui**, en base |
+| Vérification | Calcul de signature | Un `SELECT` |
+| Envoyé à chaque requête | Oui (`Authorization`) | Non — seulement à `/auth/rafraichir` |
+| Annulable | Non | **Oui** |
+
+Le partage des rôles : le jeton court paie le prix de la vitesse (aucun accès base par requête), le jeton long paie le prix du contrôle (un accès base, mais toutes les quinze minutes seulement).
+
+### Côté serveur : une entité, et la rotation
+
+```java
+@Entity
+public class JetonRafraichissement {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true, length = 64)
+    private String valeur;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "utilisateur_id")
+    private Utilisateur utilisateur;
+
+    @Column(nullable = false) private Instant expiration;
+    // On MARQUE plutôt qu'on supprime : une ligne révoquée garde une trace.
+    @Column(nullable = false) private boolean revoque;
+
+    public boolean estUtilisable() {
+        return !revoque && expiration.isAfter(Instant.now());
+    }
+}
+```
+
+```java
+/**
+ * SecureRandom, et non Random. Les deux produisent des nombres « au hasard »,
+ * mais Random est PRÉVISIBLE : à partir de quelques valeurs observées, on
+ * retrouve sa graine, donc toutes les suivantes. Disqualifiant pour un secret.
+ */
+private final SecureRandom aleatoire = new SecureRandom();
+
+@Transactional
+public JetonRafraichissement emettre(Utilisateur utilisateur) {
+    byte[] octets = new byte[32];
+    aleatoire.nextBytes(octets);
+
+    JetonRafraichissement jeton = new JetonRafraichissement();
+    // withoutPadding : évite les « = » finaux, gênants dans une URL.
+    jeton.setValeur(Base64.getUrlEncoder().withoutPadding().encodeToString(octets));
+    /* ... */
+    return repository.save(jeton);
+}
+
+/**
+ * La ROTATION : vérifier, révoquer l'ancien, en émettre un neuf.
+ *
+ * Pourquoi ne pas laisser réutiliser le même pendant sept jours ? Parce qu'un
+ * jeton volé serait alors exploitable sept jours sans que rien ne le trahisse.
+ * Avec la rotation, le voleur et le vrai utilisateur se disputent un jeton à
+ * usage unique : dès que l'un s'en sert, l'autre se voit déconnecté —
+ * l'anomalie devient VISIBLE.
+ */
+@Transactional
+public Optional<JetonRafraichissement> faireTourner(String valeurPresentee) {
+    return repository.findByValeur(valeurPresentee)
+            .filter(JetonRafraichissement::estUtilisable)
+            .map(ancien -> {
+                ancien.setRevoque(true);
+                repository.save(ancien);
+                return emettre(ancien.getUtilisateur());
+            });
+}
+```
+
+Le point d'entrée `/auth/rafraichir` est **public**, et c'est normal : il est appelé justement quand le jeton d'accès n'est plus valable. Exiger une authentification pour venir se réauthentifier n'aurait aucun sens — c'est le même raisonnement que pour `/auth/connexion`. La preuve d'identité, ici, c'est la possession du jeton long.
+
+### La déconnexion devient réelle
+
+Jusqu'ici, se déconnecter revenait à jeter le jeton côté navigateur ; le serveur n'en savait rien. Avec un jeton stocké en base, `POST /auth/deconnexion` le révoque : même recopié ailleurs, il n'ouvre plus rien. Le jeton d'accès déjà émis, lui, reste valable jusqu'à son expiration — contrepartie assumée du « sans état ».
+
+### Côté Angular : rattraper le 401 et rejouer
+
+Le bénéfice se mesure du point de vue de l'utilisateur : il clique sur « Enregistrer » vingt minutes après s'être connecté, et **ça marche**. Sans cet intercepteur, il serait éjecté vers la page de connexion en perdant sa saisie.
+
+```typescript
+export const rafraichissementInterceptor: HttpInterceptorFn = (req, next) => {
+  // Les appels d'authentification ne se rejouent pas. /rafraichir surtout : il
+  // se rappellerait lui-même à l'infini sur un 401.
+  if (req.url.includes('/api/auth/')) return next(req);
+
+  return next(req).pipe(
+    catchError((erreur: HttpErrorResponse) => {
+      if (erreur.status !== 401 || session.jetonRafraichissementActuel() === null) {
+        return throwError(() => erreur);
+      }
+
+      return rafraichissement.obtenirNouveauJeton().pipe(
+        // switchMap : « quand le nouveau jeton arrive, abandonne ce flux-ci et
+        // continue avec celui de la requête rejouée ». L'appelant d'origine
+        // reçoit la vraie réponse, sans savoir qu'un détour a eu lieu.
+        switchMap(nouveauJeton => next(req.clone({
+          // La requête porte déjà l'ancien en-tête, posé plus haut dans la
+          // chaîne. setHeaders l'écrase.
+          setHeaders: { Authorization: `Bearer ${nouveauJeton}` }
+        }))),
+        // Relancer l'erreur 401 D'ORIGINE, pas celle du rafraîchissement :
+        // c'est elle qui a du sens pour la suite de la chaîne.
+        catchError(() => throwError(() => erreur))
+      );
+    })
+  );
+};
+```
+
+**Sa place dans la chaîne fait partie du comportement.** Il est enregistré **en dernier**, donc c'est le maillon le plus profond : à l'aller la requête le traverse en dernier, au retour l'erreur l'atteint en **premier** — avant l'intercepteur d'erreur, qui déconnecte sur 401. Inversé, la déconnexion se produirait avant toute tentative de renouvellement.
+
+### La vraie difficulté : plusieurs 401 en même temps
+
+Quand un jeton expire, ce n'est presque jamais une requête qui échoue : c'est la page entière. Trois appels partis ensemble reçoivent trois 401 quasi simultanés. Sans précaution, chacun lancerait son propre rafraîchissement — trois rotations en chaîne, dont les deux dernières présenteraient un jeton que la première vient de révoquer. Résultat : l'utilisateur déconnecté alors que tout allait bien.
+
+```typescript
+// L'appel en cours, s'il y en a un : la mémoire qui permet aux appelants
+// suivants de se greffer sur le premier au lieu d'en lancer un second.
+private enCours: Observable<string> | null = null;
+
+obtenirNouveauJeton(): Observable<string> {
+  if (this.enCours) return this.enCours;   // on rend le MÊME Observable
+
+  this.enCours = this.http.post<ReponseAuth>('/api/auth/rafraichir', { /* ... */ }).pipe(
+    // La rotation a émis un nouveau jeton long : mémoriser les DEUX, sinon la
+    // prochaine expiration présenterait une valeur déjà révoquée.
+    tap(reponse => this.session.ouvrir(reponse.jeton, reponse.jetonRafraichissement, reponse.utilisateur)),
+    map(reponse => reponse.jeton),
+    catchError(erreur => {
+      this.session.vider();              // plus de porte de sortie
+      return throwError(() => erreur);
+    }),
+    // Efface la mémoire quand l'appel est terminé, dans un sens ou dans
+    // l'autre. Sans cela, `enCours` garderait pour toujours le résultat du
+    // premier rafraîchissement.
+    finalize(() => { this.enCours = null; }),
+    // Une seule requête réseau, partagée par tous les abonnés. Sans lui, un
+    // Observable HttpClient étant « froid », chaque abonnement relancerait un
+    // appel : exactement ce qu'on cherche à éviter.
+    shareReplay(1)
+  );
+
+  return this.enCours;
+}
+```
+
+| Opérateur | Rôle dans ce montage |
+|---|---|
+| `shareReplay(1)` | Une requête pour N abonnés, et sa valeur rejouée aux retardataires |
+| `finalize(fn)` | Libère la mémoire à la fin, succès ou échec |
+| `tap(fn)` | Effet de bord (mémoriser la session) sans modifier le flux |
+| `switchMap(fn)` | Enchaîner sur la requête rejouée |
+
+### Dans le projet
+
+**Entité et rotation** — [`carnet-contact-backend/src/main/java/.../model/JetonRafraichissement.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/JetonRafraichissement.java), [`security/RafraichissementService.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/security/RafraichissementService.java)
+
+**Points d'entrée** — [`carnet-contact-backend/src/main/java/.../controller/AuthController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/AuthController.java)
+
+```java
+@PostMapping("/rafraichir")
+public ResponseEntity<?> rafraichir(@RequestBody DemandeRafraichissement demande) {
+    return rafraichissementService.faireTourner(demande.jetonRafraichissement())
+            .<ResponseEntity<?>>map(nouveau -> ResponseEntity.ok(new ReponseAuth(
+                    jwtService.genererJeton(nouveau.getUtilisateur().getEmail()),
+                    nouveau.getValeur(), nouveau.getUtilisateur())))
+            // 401 et non 403 : le client doit comprendre « reconnecte-toi ».
+            .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("Jeton de rafraîchissement invalide ou expiré."));
+}
+```
+
+**Durées** — [`carnet-contact-backend/src/main/resources/application.properties`](../carnet-contact-backend/src/main/resources/application.properties)
+
+```properties
+carnet.jwt.duree-ms=900000                    # 15 minutes
+carnet.jwt.rafraichissement-duree-ms=604800000 # 7 jours
+```
+
+**Côté Angular** — [`services/rafraichissement.ts`](../carnet-contact_frontend/src/app/services/rafraichissement.ts), [`interceptors/rafraichissement-interceptor.ts`](../carnet-contact_frontend/src/app/interceptors/rafraichissement-interceptor.ts), [`app.config.ts`](../carnet-contact_frontend/src/app/app.config.ts)
+
+```typescript
+provideHttpClient(
+  withInterceptors([
+    baseUrlInterceptor,
+    authInterceptor,
+    chargementInterceptor,
+    erreurInterceptor,
+    // En dernier = au plus profond : il voit l'erreur en PREMIER au retour,
+    // donc avant qu'erreurInterceptor ne déconnecte sur 401.
+    rafraichissementInterceptor
+  ])
+)
+```
+
+**Déconnexion** — [`carnet-contact_frontend/src/app/services/auth.ts`](../carnet-contact_frontend/src/app/services/auth.ts)
+
+```typescript
+deconnexion(): void {
+  const jetonRafraichissement = this.session.jetonRafraichissementActuel();
+  // On vide LOCALEMENT d'abord, sans attendre : l'interface doit réagir au
+  // clic, et une panne réseau ne doit pas laisser l'utilisateur connecté
+  // malgré lui. L'appel serveur part en parallèle, son échec est ignoré.
+  this.session.vider();
+
+  if (jetonRafraichissement) {
+    this.http.post<void>(`${this.apiUrl}/deconnexion`, { jetonRafraichissement })
+      .pipe(catchError(() => EMPTY)).subscribe();
+  }
+}
+```
+
+---
+
+## 25. Rafraîchissement automatique (sondage périodique)
+
+### Le problème : une page qui ne sait pas qu'elle a vieilli
+
+La messagerie n'affichait les nouveaux messages qu'au rechargement du fil. Un interlocuteur pouvait répondre trois fois sans que rien ne bouge à l'écran.
+
+La solution la plus simple est le **sondage** (*polling*) : redemander régulièrement. Ce n'est pas la technique la plus élégante — un WebSocket laisserait le serveur *pousser* les nouveautés au lieu de les attendre — mais elle ne demande aucune infrastructure nouvelle, réutilise l'authentification déjà en place, et tient en un opérateur RxJS.
+
+### `timer` : un flux qui émet tout seul
+
+```typescript
+// timer(0, 5000) émet immédiatement, puis toutes les 5 secondes : 0, 1, 2, 3…
+// Le premier zéro est important : sans lui, ouvrir un fil laisserait l'écran
+// vide pendant cinq secondes.
+this.suivi = timer(0, 5000).pipe(
+  // timer émet un COMPTEUR : on s'en sert pour distinguer le premier
+  // chargement (déclenché par un clic, donc l'utilisateur attend et mérite
+  // l'indicateur) des suivants, silencieux.
+  switchMap(tour => this.http.get<T[]>(url, {
+    context: contexte({ discret: tour > 0 })
+  }).pipe(
+    // Toujours à l'INTÉRIEUR du switchMap : dehors, la première coupure
+    // réseau terminerait le flux du timer et arrêterait le rafraîchissement
+    // pour de bon.
+    catchError(() => EMPTY)
+  ))
+).subscribe(donnees => this.signal.set(donnees));
+```
+
+`switchMap` sert ici une seconde fonction, en plus de celle de la section 22 : si une réponse tarde plus que l'intervalle, le tour suivant annule le précédent au lieu d'empiler les requêtes.
+
+### Le vrai piège : savoir s'arrêter
+
+Un `timer` tourne **indéfiniment** tant que personne ne se désabonne. Trois arrêts sont à prévoir, et chacun correspond à un bug concret si on l'oublie :
+
+| Ce qu'on oublie | Ce qui se passe |
+|---|---|
+| Arrêter à la déconnexion | Le sondage continue avec un jeton invalide : un 401 toutes les 15 secondes |
+| Arrêter à la destruction du composant | Des requêtes partent pour alimenter un écran que plus personne ne regarde |
+| Empêcher un second démarrage | Deux timers empilés, donc deux fois plus de requêtes — puis quatre, puis huit |
+
+```typescript
+// On garde l'abonnement sous la main pour pouvoir l'arrêter.
+private suivi?: Subscription;
+
+demarrer(): void {
+  // Garde-fou : ne pas empiler un second timer.
+  if (!this.navigateur || this.suivi) return;
+  this.suivi = timer(0, INTERVALLE).pipe(/* ... */).subscribe(/* ... */);
+}
+
+arreter(): void {
+  this.suivi?.unsubscribe();
+  this.suivi = undefined;
+}
+```
+
+Dans un composant, `ngOnDestroy` est l'endroit prévu pour cela — le pendant de `ngOnInit` (section 11), appelé quand Angular retire le composant de l'écran :
+
+```typescript
+export class MaPage implements OnInit, OnDestroy {
+  ngOnDestroy(): void {
+    this.service.arreter();
+  }
+}
+```
+
+### Et le SSR : ne rien démarrer côté serveur
+
+Même précaution qu'en section 18 pour `localStorage`, mais pour une raison plus grave. Angular attend que l'application soit « stable » avant de renvoyer le HTML rendu côté serveur. Un flux qui ne se termine jamais l'en empêche : le rendu **ne se termine pas**, et la page ne s'affiche jamais.
+
+```typescript
+private navigateur = isPlatformBrowser(inject(PLATFORM_ID));
+
+demarrer(): void {
+  if (!this.navigateur) return;   // côté serveur : on ne démarre rien
+  /* ... */
+}
+```
+
+### Choisir un rythme
+
+Deux valeurs différentes pour deux usages différents : on regarde un fil de discussion en attendant une réponse (5 s), alors qu'une pastille de notification n'est qu'une information d'ambiance (15 s). Sonder trop souvent coûte des requêtes pour rien ; pas assez donne une application qui paraît figée.
+
+### Dans le projet
+
+**Service** — [`carnet-contact_frontend/src/app/services/message.ts`](../carnet-contact_frontend/src/app/services/message.ts)
+
+```typescript
+const INTERVALLE_FIL_MS = 5000;
+const INTERVALLE_NON_LUS_MS = 15000;
+
+private navigateur = isPlatformBrowser(inject(PLATFORM_ID));
+private suiviFil?: Subscription;
+private suiviNonLus?: Subscription;
+
+suivreFil(autreId: number): void {
+  // Changer d'interlocuteur doit arrêter le suivi précédent, sinon deux
+  // timers écriraient tour à tour dans le même signal.
+  this.arreterSuiviFil();
+  if (!this.navigateur) return;
+
+  this.suiviFil = timer(0, INTERVALLE_FIL_MS).pipe(
+    switchMap(tour => this.http.get<Message[]>(`${this.apiUrl}/${autreId}`, {
+      context: contexte({ discret: tour > 0, libelle: 'Impossible de charger la conversation' })
+    }).pipe(catchError(() => EMPTY)))
+  ).subscribe(messages => {
+    this.filSignal.set(messages);
+    // Le serveur a marqué ces messages comme lus en répondant : la pastille
+    // doit suivre tout de suite, sans attendre le prochain tour du second timer.
+    this.nonLusSignal.update(liste => liste.filter(m => m.expediteur.id !== autreId));
+  });
+}
+```
+
+**Démarrage / arrêt selon la connexion** — [`carnet-contact_frontend/src/app/app.ts`](../carnet-contact_frontend/src/app/app.ts)
+
+```typescript
+constructor() {
+  // Cet effect() ne déclenche plus un appel : il DÉMARRE et ARRÊTE un suivi.
+  // Le cas « arrêter » est le plus important — sans lui, le sondage
+  // continuerait après la déconnexion, avec un jeton devenu invalide.
+  effect(() => {
+    if (this.auth.connecte()) {
+      this.messages.demarrerSuiviNonLus();
+    } else {
+      this.messages.arreterSuiviNonLus();
+    }
+  });
+}
+```
+
+**Arrêt en quittant la page** — [`carnet-contact_frontend/src/app/pages/messages/messages.ts`](../carnet-contact_frontend/src/app/pages/messages/messages.ts)
+
+```typescript
+ouvrir(utilisateur: Utilisateur): void {
+  this.selection.set(utilisateur);
+  this.messageService.suivreFil(utilisateur.id);
+}
+
+ngOnDestroy(): void {
+  this.messageService.arreterSuiviFil();
+}
+```
+
+---
+
+## 26. Tests automatisés
+
+### Le problème : vérifier à la main ne passe pas à l'échelle
+
+Jusqu'ici, chaque fonctionnalité était validée en la manipulant : cliquer, regarder, recommencer. Cela marche une fois. Le problème n'est pas de vérifier que le code écrit aujourd'hui fonctionne — c'est de vérifier que celui d'il y a trois mois fonctionne **encore** après la modification d'aujourd'hui. Personne ne reteste vingt écrans à la main après chaque changement.
+
+Certaines règles sont en plus **invisibles** à l'œil nu. « Un utilisateur ne peut pas lire les contacts d'un autre » ne se voit pas en regardant l'écran : on ne voit que ce qui s'affiche, jamais ce qui aurait pu s'afficher. Il suffit d'un `findById` à la place d'un `findByIdAndProprietaireId` pour ouvrir tout le carnet de tout le monde, sans le moindre symptôme visible.
+
+### Les deux formes de test
+
+| | Test unitaire | Test d'intégration |
+|---|---|---|
+| Portée | Une classe isolée | Plusieurs couches assemblées |
+| Démarrage | Quelques millisecondes | Quelques secondes (contexte Spring) |
+| Répond à | « Ce calcul est-il juste ? » | « Le système protège-t-il vraiment ? » |
+| Exemple ici | `JwtServiceTest` | `ContactControllerTest` |
+
+Le choix n'est pas une question de goût. Tester un contrôleur *seul*, avec un faux repository, prouverait seulement que le code fait ce qu'on a écrit — pas qu'il protège quoi que ce soit, puisque la protection naît de la coopération du filtre JWT, de la configuration de sécurité et de la requête SQL.
+
+### Côté Java : JUnit et AssertJ
+
+Un test unitaire pur n'a besoin d'aucune annotation Spring. On construit la classe à la main, on l'interroge.
+
+```java
+class MonServiceTest {
+
+    @Test
+    @DisplayName("Une phrase lisible qui décrit le comportement attendu")
+    void nomTechniqueDuTest() {
+        MonService service = new MonService("paramètre", 60_000);
+
+        String resultat = service.faireQuelqueChose();
+
+        // assertThat(...).isEqualTo(...) : la forme « fluide » d'AssertJ. Elle
+        // se lit comme une phrase, et son message d'échec est plus parlant
+        // qu'un simple « expected true ».
+        assertThat(resultat).isEqualTo("attendu");
+    }
+}
+```
+
+L'injection par constructeur, adoptée en section 29 pour d'autres raisons, se révèle ici un avantage inattendu : elle permet de fabriquer l'objet avec **les valeurs qu'on veut**, y compris des valeurs impossibles autrement.
+
+```java
+// Durée négative : le jeton naît déjà périmé. Impossible à obtenir en
+// conditions réelles sans attendre quinze minutes.
+JwtService service = new JwtService(SECRET, -1_000);
+assertThat(service.emailDuJeton(service.genererJeton("a@b.fr"))).isNull();
+```
+
+### Côté Java : MockMvc pour les tests d'intégration
+
+```java
+@SpringBootTest        // démarre le contexte Spring complet, comme en vrai
+@AutoConfigureMockMvc  // fournit MockMvc : des requêtes HTTP sans ouvrir de port
+@Transactional         // chaque test dans une transaction ANNULÉE à la fin
+class MonControleurTest {
+
+    @Autowired private MockMvc mockMvc;
+
+    // @BeforeEach s'exécute avant CHAQUE méthode, pas une fois pour toutes :
+    // c'est ce qui garantit que deux tests ne partagent jamais un objet que
+    // l'un aurait modifié.
+    @BeforeEach
+    void preparer() { /* ... */ }
+
+    @Test
+    void sansJeton_renvoie401() throws Exception {
+        mockMvc.perform(get("/api/ressources"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void avecJeton_renvoieLaPremierePage() throws Exception {
+        mockMvc.perform(get("/api/ressources")
+                        .param("page", "0")
+                        .header("Authorization", "Bearer " + jeton))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(3))
+                .andExpect(jsonPath("$.contenu[0].titre").value("Alpha"));
+    }
+}
+```
+
+`@Transactional` sur un test **ne veut pas dire la même chose** que sur un service : ici, Spring annule systématiquement la transaction à la fin. Chaque méthode repart d'une base propre, et l'ordre d'exécution cesse d'avoir la moindre importance — un test qui ne passe que s'il tourne en premier n'a aucune valeur.
+
+| Élément | Rôle |
+|---|---|
+| `@SpringBootTest` | Démarre l'application entière |
+| `@AutoConfigureMockMvc` | Injecte `MockMvc` |
+| `@Transactional` (sur un test) | Annule tout à la fin : base propre à chaque méthode |
+| `@BeforeEach` | Préparation rejouée avant chaque test |
+| `@DisplayName("…")` | Le libellé lisible affiché dans le rapport |
+| `mockMvc.perform(...)` | Envoie une requête sans réseau |
+| `.andExpect(status().isOk())` | Vérifie le code de statut |
+| `.andExpect(jsonPath("$.x").value(y))` | Vérifie un morceau du JSON de réponse |
+| `JsonPath.read(corps, "$.x")` | **Récupère** une valeur (pour la requête suivante) |
+| `src/test/resources/application.properties` | Configuration propre aux tests (base dédiée, `create-drop`) |
+
+Un fichier `application.properties` placé dans `src/test/resources` prend le pas sur celui de `src/main/resources` : les tests tournent dans leur propre monde. Attention, il le **remplace**, il ne s'y ajoute pas — il doit donc être complet.
+
+### Côté Angular : vitest et le faux serveur HTTP
+
+Un test ne doit dépendre ni du réseau ni d'un backend démarré. S'il échoue, on veut savoir que c'est le code qui est faux — pas que le serveur était éteint. `provideHttpClientTesting()` remplace la couche qui parle au réseau : le service continue d'utiliser `HttpClient` exactement comme en vrai, sans savoir qu'il est testé.
+
+```typescript
+describe('MonService', () => {
+  let service: MonService;
+  let backend: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()]
+    });
+    service = TestBed.inject(MonService);
+    backend = TestBed.inject(HttpTestingController);
+  });
+
+  // Le garde-fou qui attrape les requêtes parties sans qu'on s'y attende —
+  // souvent le signe d'un appel en trop.
+  afterEach(() => backend.verify());
+
+  it('remplit le signal à partir de la réponse', () => {
+    service.charger();
+
+    const requete = backend.expectOne('/api/ressources');
+    expect(requete.request.params.get('page')).toBe('0');
+    requete.flush({ contenu: [], total: 0 });
+
+    expect(service.donnees()).toEqual([]);
+  });
+});
+```
+
+| Méthode | Rôle |
+|---|---|
+| `expectOne(url)` | Affirme qu'une requête **et une seule** attend, et la rend |
+| `expectNone(url)` | Affirme qu'aucune requête n'est partie vers cette URL |
+| `match(critère)` | Rend toutes les requêtes en attente qui correspondent |
+| `req.flush(corps)` | Répond avec succès |
+| `req.flush('', { status: 500, statusText: '…' })` | Répond avec une erreur |
+| `req.cancelled` | `true` si le flux a été annulé (preuve d'un `switchMap`) |
+| `verify()` | Échoue s'il reste une requête sans réponse |
+
+Pour un composant, on règle l'état par les services puis on interroge le HTML produit — jamais les variables internes :
+
+```typescript
+const fixture = TestBed.createComponent(MonComposant);
+await fixture.whenStable();          // laisse Angular afficher
+
+backend.expectOne('/api/ressources/7').flush({ id: 7, titre: 'Alpha' });
+await fixture.whenStable();
+
+expect((fixture.nativeElement as HTMLElement).textContent).toContain('Alpha');
+```
+
+Quand un composant dépend du routeur ou de l'URL, on fournit le minimum nécessaire — un **bouchon** (*stub*), pas un routeur complet :
+
+```typescript
+providers: [
+  provideRouter([]),
+  {
+    provide: ActivatedRoute,
+    useValue: { snapshot: { paramMap: convertToParamMap({ id: '7' }) } }
+  }
+]
+```
+
+### Ce qu'il vaut la peine de tester
+
+Pas tout, et surtout pas « que la classe s'instancie » — c'est ce que génère le CLI par défaut, et cela ne protège de rien. Les bons candidats sont :
+
+- **Ce qui est invisible.** L'isolation entre comptes, l'absence du mot de passe dans une réponse JSON.
+- **Ce qu'on ne sait pas provoquer à la main.** Un jeton expiré, deux réponses qui arrivent dans le désordre, trois 401 simultanés.
+- **Ce dont on a justifié la forme précise.** Si un commentaire dit « `catchError` doit être à l'intérieur du `switchMap` », un test doit échouer quand quelqu'un le déplace.
+
+### Dans le projet
+
+**Lancer les tests**
+
+| Commande | Portée |
+|---|---|
+| `.\mvnw.cmd test` (backend) | 38 tests : JWT, politique de mot de passe, contacts, authentification |
+| `npm test` (frontend) | 58 tests : services, intercepteurs, validateurs, composants |
+
+**Test unitaire pur** — [`carnet-contact-backend/src/test/java/.../security/JwtServiceTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/security/JwtServiceTest.java)
+
+```java
+@Test
+@DisplayName("Un jeton signé avec une autre clé est refusé")
+void jetonDUneAutreCle_rendNull() {
+    JwtService emetteur = new JwtService("une-tout-autre-cle-de-32-caracteres-au-moins", 60_000);
+    JwtService verificateur = new JwtService(SECRET, 60_000);
+
+    // LE test qui justifie tout le mécanisme : n'importe qui peut fabriquer un
+    // JWT, mais seule la bonne clé produit une signature qu'on accepte.
+    assertThat(verificateur.emailDuJeton(emetteur.genererJeton("mallory@exemple.fr"))).isNull();
+}
+```
+
+**Isolation entre comptes** — [`carnet-contact-backend/src/test/java/.../controller/ContactControllerTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/controller/ContactControllerTest.java)
+
+```java
+@Test
+@DisplayName("Modifier le contact d'un autre renvoie 404")
+void modifierLeContactDUnAutre_renvoie404() throws Exception {
+    Contact contactDAlice = creerContact(alice, "Dupont", "Marie", "marie@exemple.fr");
+
+    mockMvc.perform(put("/api/contacts/" + contactDAlice.getId())
+                    .header("Authorization", "Bearer " + jetonBob)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"nom\":\"Pirate\",\"prenom\":\"X\",\"email\":\"x@exemple.fr\"}"))
+            .andExpect(status().isNotFound());
+
+    // Vérifier le statut ne suffit pas : un 404 renvoyé APRÈS avoir écrit
+    // serait catastrophique.
+    assertThat(contactRepository.findById(contactDAlice.getId()).orElseThrow().getNom())
+            .isEqualTo("Dupont");
+}
+```
+
+**Rotation du jeton** — [`carnet-contact-backend/src/test/java/.../controller/AuthControllerTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/controller/AuthControllerTest.java)
+
+```java
+@Test
+@DisplayName("Un jeton de rafraîchissement déjà utilisé est refusé (401)")
+void rafraichir_deuxFoisAvecLeMemeJeton_renvoie401() throws Exception {
+    String jetonLong = lire(inscrire("alice@exemple.fr", "motdepasse"), "$.jetonRafraichissement");
+
+    mockMvc.perform(post("/api/auth/rafraichir") /* ... */).andExpect(status().isOk());
+    mockMvc.perform(post("/api/auth/rafraichir") /* ... */).andExpect(status().isUnauthorized());
+}
+```
+
+**Annulation par `switchMap`** — [`carnet-contact_frontend/src/app/services/contact.spec.ts`](../carnet-contact_frontend/src/app/services/contact.spec.ts)
+
+```typescript
+it('annule la requête précédente quand une nouvelle recherche part', () => {
+  service.rechercher('dup');
+  service.rechercher('dupont');
+
+  const requetes = backend.match(r => r.url === '/api/contacts');
+  expect(requetes[0].cancelled).toBe(true);
+  expect(requetes[1].cancelled).toBe(false);
+
+  requetes[1].flush(page([contactExemple]));
+  expect(service.contacts()).toEqual([contactExemple]);
+});
+```
+
+**Un seul renouvellement pour plusieurs 401** — [`carnet-contact_frontend/src/app/interceptors/rafraichissement-interceptor.spec.ts`](../carnet-contact_frontend/src/app/interceptors/rafraichissement-interceptor.spec.ts)
+
+```typescript
+it('ne lance qu\'un seul renouvellement pour plusieurs 401 simultanés', () => {
+  http.get('/api/contacts').subscribe({ error: () => {} });
+  http.get('/api/messages/non-lus').subscribe({ error: () => {} });
+
+  backend.expectOne('/api/contacts').flush('', { status: 401, statusText: 'Unauthorized' });
+  backend.expectOne('/api/messages/non-lus').flush('', { status: 401, statusText: 'Unauthorized' });
+
+  // UN seul appel de renouvellement, pas deux.
+  const renouvellements = backend.match('/api/auth/rafraichir');
+  expect(renouvellements.length).toBe(1);
+  /* ... */
+});
+```
+
+**Message d'erreur composé** — [`carnet-contact_frontend/src/app/interceptors/erreur-interceptor.spec.ts`](../carnet-contact_frontend/src/app/interceptors/erreur-interceptor.spec.ts)
+
+```typescript
+it('compose le libellé métier et la raison technique', () => {
+  http.get('/api/contacts', {
+    context: contexte({ libelle: 'Impossible de charger les contacts' })
+  }).subscribe({ error: () => {} });
+
+  backend.expectOne('/api/contacts').flush('', { status: 500, statusText: 'Server Error' });
+
+  expect(etat.erreur())
+    .toBe('Impossible de charger les contacts : le serveur a rencontré une erreur interne (500).');
+});
+```
+
+---
+
+## 27. Saisie et validation d'un mot de passe
+
+### La règle des deux côtés
+
+Jusqu'ici, l'inscription se contentait de vérifier que le mot de passe faisait six caractères. Le durcir soulève une question qui revient dans tout formulaire un peu sérieux : **où placer la règle ?**
+
+La réponse est : aux deux endroits, et ce n'est pas de la duplication inutile — les deux versions ne servent pas à la même chose.
+
+| | Côté navigateur | Côté serveur |
+|---|---|---|
+| Rôle | **Renseigner** pendant la saisie | **Décider** |
+| Retour | Immédiat, à chaque frappe | Après l'envoi |
+| Contournable ? | Oui, trivialement | Non |
+| Si on l'enlève | L'utilisateur découvre son erreur après coup | La règle n'existe plus du tout |
+
+La validation du navigateur est un **confort d'interface**, jamais une sécurité : n'importe qui peut envoyer une requête directement à l'API sans ouvrir le formulaire. Inversement, ne valider que côté serveur donne une expérience pénible — trois allers-retours pour comprendre ce qu'on attend de vous.
+
+Corollaire pratique : si les deux versions divergent, le formulaire acceptera une saisie que le serveur refusera. Le seul remède est de les garder chacune **isolée dans son propre fichier**, faciles à comparer côte à côte, et de les couvrir par des tests symétriques.
+
+### Côté serveur : une classe à part
+
+```java
+/**
+ * Constructeur privé : cette classe n'est qu'un porte-méthodes, on ne veut
+ * pas qu'on en crée des instances.
+ */
+public final class PolitiqueMotDePasse {
+
+    private PolitiqueMotDePasse() {}
+
+    /**
+     * On renvoie la LISTE de ce qui manque, pas un simple booléen. « Refusé »
+     * sans dire pourquoi oblige l'utilisateur à deviner ; énumérer les
+     * critères non satisfaits lui permet de corriger du premier coup.
+     */
+    public record Resultat(boolean valide, List<String> manquants) {
+        public String message() {
+            return "Mot de passe trop faible — il lui manque : "
+                    + String.join(", ", manquants) + ".";
+        }
+    }
+
+    public static Resultat verifier(String motDePasse) {
+        List<String> manquants = new ArrayList<>();
+
+        if (motDePasse == null || motDePasse.length() < LONGUEUR_MINIMALE) {
+            manquants.add(LONGUEUR_MINIMALE + " caractères minimum");
+        }
+        if (motDePasse != null) {
+            // chars() rend le flux des caractères ; noneMatch s'arrête au
+            // premier qui convient, sans parcourir toute la chaîne.
+            if (motDePasse.chars().noneMatch(Character::isUpperCase)) {
+                manquants.add("une majuscule");
+            }
+            // « Ni lettre ni chiffre » plutôt qu'une liste de symboles admis :
+            // une liste oublierait toujours un caractère.
+            if (motDePasse.chars().noneMatch(c -> !Character.isLetterOrDigit(c))) {
+                manquants.add("un caractère spécial");
+            }
+            /* … */
+        }
+
+        return new Resultat(manquants.isEmpty(), manquants);
+    }
+}
+```
+
+Pourquoi une classe plutôt qu'un `if` dans le contrôleur ? Pour trois raisons qui reviendront souvent : la règle est devenue une vraie règle métier avec plusieurs critères ; elle est testable sans démarrer Spring, puisque c'est du calcul pur ; et elle doit pouvoir être comparée à son homologue Angular.
+
+### La limite des règles de composition
+
+Un point important à comprendre plutôt qu'à subir : **« Motdepasse1! » coche les cinq critères de forme** — longueur, minuscule, majuscule, chiffre, caractère spécial — et reste l'un des tout premiers mots de passe qu'une attaque essaie.
+
+Les règles de composition ne mesurent pas la solidité, elles mesurent la *forme*. D'où l'ajout d'une liste de mots de passe trop courants, volontairement minuscule ici : elle illustre le principe plus qu'elle ne protège. Un vrai projet y brancherait une liste de plusieurs millions d'entrées.
+
+```java
+private static final Set<String> TROP_COURANTS = Set.of(
+        "motdepasse", "password", "azerty123",
+        // Ceux-ci cochent pourtant les cinq critères de forme :
+        // c'est exactement pour eux que la liste existe.
+        "motdepasse1!", "password1!", "azerty123!");
+```
+
+### Un validateur personnalisé côté Angular
+
+`Validators.required` et `Validators.email` (section 7) ne sont rien d'autre que des fonctions d'une forme précise. Rien n'empêche d'écrire les siennes.
+
+```typescript
+/**
+ * Un validateur reçoit le contrôle et rend soit `null`, soit un objet
+ * décrivant l'erreur.
+ *
+ * La convention est contre-intuitive au début : `null` signifie VALIDE. Elle
+ * se comprend en lisant l'objet renvoyé comme « la liste des erreurs » — pas
+ * d'erreur, donc rien à renvoyer.
+ */
+export const motDePasseSolide: ValidatorFn = (
+  control: AbstractControl
+): ValidationErrors | null => {
+  const valeur: string = control.value ?? '';
+
+  // Champ vide : c'est le rôle de Validators.required. Un validateur qui se
+  // mêle des cas des autres produit deux messages pour une seule erreur.
+  if (valeur === '') {
+    return null;
+  }
+
+  const manquants = CRITERES
+    .filter(critere => !critere.verifie(valeur))
+    .map(critere => critere.cle);
+
+  // Un validateur n'est pas obligé de se limiter à un drapeau : il peut
+  // transporter de quoi construire le message.
+  return manquants.length === 0 ? null : { motDePasseFaible: { manquants } };
+};
+```
+
+### Une seule liste pour valider et pour afficher
+
+Même principe que la constante `RESEAUX` (section 20) : les critères sont décrits une fois, et servent aux deux usages. Ajouter un sixième critère ne demande qu'une ligne, et la liste à cocher suit toute seule.
+
+```typescript
+export interface Critere {
+  cle: string;
+  libelle: string;
+  verifie: (valeur: string) => boolean;
+}
+
+export const CRITERES: Critere[] = [
+  { cle: 'longueur',  libelle: '10 caractères minimum', verifie: v => v.length >= 10 },
+  { cle: 'majuscule', libelle: 'Une majuscule',         verifie: v => /[A-Z]/.test(v) },
+  { cle: 'special',   libelle: 'Un caractère spécial',  verifie: v => /[^a-zA-Z0-9]/.test(v) }
+];
+```
+
+```html
+<ul class="criteres" aria-label="Conditions du mot de passe">
+  @for (critere of criteres; track critere.cle) {
+    <li [class.satisfait]="critereSatisfait(critere)">
+      <!-- La marque (• → ✓) ET la couleur portent l'information : la couleur
+           seule serait invisible pour un daltonien. aria-hidden cache le
+           symbole décoratif aux lecteurs d'écran, qui liront le libellé. -->
+      <span class="marque" aria-hidden="true">
+        @if (critereSatisfait(critere)) { ✓ } @else { • }
+      </span>
+      {{ critere.libelle }}
+    </li>
+  }
+</ul>
+```
+
+Le composant réutilise la fonction `verifie` du critère plutôt que de relire l'erreur du validateur : **même source pour la validation et pour l'affichage**, donc aucun risque que la coche verte et le bouton désactivé racontent deux histoires différentes.
+
+### Changer les règles à l'exécution : `setValidators`
+
+Un même formulaire peut servir deux usages aux exigences différentes. Ici : créer un compte impose la règle de solidité, s'y connecter non.
+
+```typescript
+basculer(): void {
+  this.mode.update(m => (m === 'connexion' ? 'inscription' : 'connexion'));
+
+  const champ = this.formulaire.controls.motDePasse;
+
+  if (this.mode() === 'inscription') {
+    champ.setValidators([Validators.required, motDePasseSolide]);
+  } else {
+    champ.setValidators([Validators.required]);
+  }
+
+  // setValidators() change la RÈGLE mais ne rejoue pas la validation : sans
+  // cet appel, le champ garderait le verdict calculé avec l'ancienne règle
+  // jusqu'à la prochaine frappe.
+  champ.updateValueAndValidity();
+}
+```
+
+**Pourquoi retirer la règle à la connexion ?** Parce qu'elle ne s'applique qu'aux mots de passe qu'on **crée**. Les comptes existants ont pu l'être sous une politique plus souple ; exiger la nouvelle règle pour entrer enfermerait dehors leurs propriétaires. Et on ne peut pas non plus revalider les anciens en base : on ne stocke que des hachés (section 18), donc on est incapable de relire le mot de passe d'origine.
+
+| Méthode | Rôle |
+|---|---|
+| `setValidators([...])` | Remplace la liste des validateurs du contrôle |
+| `addValidators(...)` / `removeValidators(...)` | Ajoute ou retire sans toucher aux autres |
+| `updateValueAndValidity()` | Rejoue la validation **maintenant** — indispensable après les précédentes |
+| `control.hasError('cle')` | Ce contrôle porte-t-il cette erreur ? |
+| `control.getError('cle')` | Récupère l'objet d'erreur, avec ses détails |
+
+### Afficher ce qu'on tape
+
+Masquer la saisie protège d'un regard par-dessus l'épaule ; la montrer évite de se tromper trois fois de suite sans comprendre pourquoi. Laisser le **choix** est la seule réponse correcte : l'utilisateur seul sait s'il est seul devant son écran.
+
+```typescript
+motDePasseVisible = signal(false);
+
+basculerVisibiliteMotDePasse(): void {
+  this.motDePasseVisible.update(v => !v);
+}
+```
+
+```html
+<!-- [type] est un binding de propriété comme un autre (section 6) : basculer
+     entre 'password' et 'text' suffit, sans toucher au FormControl ni à sa
+     valeur. -->
+<input
+  [type]="motDePasseVisible() ? 'text' : 'password'"
+  formControlName="motDePasse" />
+
+<!-- type="button" est OBLIGATOIRE : dans un <form>, un bouton sans type vaut
+     type="submit" — celui-ci enverrait le formulaire au lieu de dévoiler le
+     mot de passe. Piège classique, et silencieux.
+     [attr.aria-pressed] annonce l'ÉTAT : c'est un interrupteur, pas une
+     action ponctuelle. -->
+<button
+  type="button"
+  (click)="basculerVisibiliteMotDePasse()"
+  [attr.aria-pressed]="motDePasseVisible()"
+  [attr.aria-label]="motDePasseVisible() ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
+  @if (motDePasseVisible()) { Masquer } @else { Afficher }
+</button>
+```
+
+`[attr.x]` plutôt que `[x]` : le premier écrit un **attribut HTML**, le second une **propriété de l'objet DOM**. Pour les attributs `aria-*`, qui n'ont pas de propriété correspondante, seule la forme `[attr.]` fonctionne.
+
+### Dans le projet
+
+**Politique côté serveur** — [`carnet-contact-backend/src/main/java/.../security/PolitiqueMotDePasse.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/security/PolitiqueMotDePasse.java)
+
+**Application** — [`carnet-contact-backend/src/main/java/.../controller/AuthController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/AuthController.java)
+
+```java
+// On rejette une requête MAL FORMÉE (400) avant de consulter l'état du
+// serveur (409 si l'email est déjà pris) : l'ordre suit le sens des codes.
+PolitiqueMotDePasse.Resultat verification =
+        PolitiqueMotDePasse.verifier(demande.motDePasse());
+
+if (!verification.valide()) {
+    return ResponseEntity.badRequest().body(verification.message());
+}
+```
+
+Ce que répond l'API, vérifié au `curl` :
+
+| Mot de passe envoyé | Réponse |
+|---|---|
+| `court` | `400` — il lui manque : 10 caractères minimum, une majuscule, un chiffre, un caractère spécial |
+| `tellementlong` | `400` — il lui manque : une majuscule, un chiffre, un caractère spécial |
+| `MotDeP4sse` | `400` — il lui manque : un caractère spécial |
+| `Motdepasse1!` | `400` — il lui manque : un mot de passe moins courant |
+| `MotDeP4sse2026!` | `200` |
+
+**Validateur et critères** — [`carnet-contact_frontend/src/app/validateurs/mot-de-passe.ts`](../carnet-contact_frontend/src/app/validateurs/mot-de-passe.ts)
+
+**Formulaire** — [`carnet-contact_frontend/src/app/pages/connexion/connexion.ts`](../carnet-contact_frontend/src/app/pages/connexion/connexion.ts), [`connexion.html`](../carnet-contact_frontend/src/app/pages/connexion/connexion.html)
+
+```typescript
+critereSatisfait(critere: CritereMotDePasse): boolean {
+  const valeur: string = this.formulaire.controls.motDePasse.value ?? '';
+  return valeur !== '' && critere.verifie(valeur);
+}
+```
+
+**Tests symétriques** — [`PolitiqueMotDePasseTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/security/PolitiqueMotDePasseTest.java) et [`mot-de-passe.spec.ts`](../carnet-contact_frontend/src/app/validateurs/mot-de-passe.spec.ts)
+
+Côté Java, `@ParameterizedTest` rejoue la même méthode pour chaque valeur — cinq méthodes quasi identiques évitées, et le rapport nomme quand même chaque cas :
+
+```java
+@ParameterizedTest
+@ValueSource(strings = {
+        "Court1!",          // trop court
+        "motdep4sse!",      // pas de majuscule
+        "MOTDEP4SSE!",      // pas de minuscule
+        "MotDePasse!",      // pas de chiffre
+        "MotDeP4sse"        // pas de caractère spécial
+})
+void motDePasseIncomplet_estRefuse(String candidat) {
+    assertThat(PolitiqueMotDePasse.verifier(candidat).valide()).isFalse();
+}
+```
+
+Côté Angular, un test veille explicitement sur l'accord entre la liste à cocher et le validateur :
+
+```typescript
+it('la liste à cocher et le validateur donnent le même verdict', () => {
+  for (const candidat of ['MotDeP4sse!', 'court', 'tellementlong', 'Motdepasse1!']) {
+    const tousLesCriteresPassent =
+      CRITERES_MOT_DE_PASSE.every(critere => critere.verifie(candidat));
+
+    expect(valider(candidat) === null).toBe(tousLesCriteresPassent);
+  }
+});
+```
+
+---
+
+## 28. Notifications du navigateur
+
+### Le problème : prévenir quelqu'un qui ne regarde pas
+
+Le sondage de la section 25 met la messagerie à jour toutes les cinq secondes — à condition d'avoir la page sous les yeux. Quelqu'un qui travaille dans un autre onglet ne verra rien.
+
+Deux canaux existent, et **aucun ne suffit seul** :
+
+| | Notification système | Bandeau dans l'application |
+|---|---|---|
+| Visible onglet en arrière-plan | Oui | Non |
+| Demande une permission | Oui, refusable définitivement | Non |
+| Disponible partout | Non (vieux navigateurs, HTTP simple) | Toujours |
+
+D'où la règle retenue : **notification système quand l'onglet est caché et la permission accordée, bandeau interne dans tous les autres cas**. Chacun couvre l'angle mort de l'autre.
+
+### L'API `Notification`
+
+```typescript
+/**
+ * « indisponible » n'est pas une valeur de l'API : c'est la nôtre, pour le cas
+ * où `Notification` n'existe pas du tout — rendu côté serveur, navigateur
+ * ancien, page en HTTP simple. Sans cette quatrième valeur, il faudrait tester
+ * `typeof Notification` à chaque usage.
+ */
+private permissionSignal = signal<NotificationPermission | 'indisponible'>('indisponible');
+
+constructor() {
+  if (this.navigateur && 'Notification' in window) {
+    this.permissionSignal.set(Notification.permission);
+  }
+}
+```
+
+| Valeur de `Notification.permission` | Sens |
+|---|---|
+| `'default'` | Jamais demandé — on peut demander |
+| `'granted'` | Accordé |
+| `'denied'` | Refusé — **on ne peut plus redemander** |
+
+### La permission se demande depuis un clic
+
+C'est la contrainte la plus importante, et la plus facile à oublier :
+
+```typescript
+demanderPermission(): void {
+  if (!this.navigateur || !('Notification' in window)) {
+    return;
+  }
+  Notification.requestPermission().then(reponse => this.permissionSignal.set(reponse));
+}
+```
+
+Les navigateurs **ignorent** (ou refusent d'office) une demande qui ne fait pas suite à une action de l'utilisateur — précisément pour empêcher les sites de réclamer l'autorisation dès l'ouverture de la page. Il faut donc un bouton, pas un appel au démarrage.
+
+Et le refus est **définitif du point de vue du site** : un `'denied'` ne peut plus être changé par le code, seulement par l'utilisateur dans les réglages du navigateur. D'où l'importance de ne demander qu'à un moment où la demande a du sens, et de prévoir un repli qui fonctionne sans.
+
+### Choisir le canal
+
+```typescript
+notifier(titre: string, corps: string): void {
+  if (!this.navigateur) return;
+
+  // document.hidden : vrai quand l'onglet n'est pas au premier plan (autre
+  // onglet actif, fenêtre réduite). C'est ce qui évite de déclencher une
+  // notification système alors que l'utilisateur a la page sous les yeux —
+  // elle serait redondante et agaçante.
+  if (this.permissionSignal() === 'granted' && document.hidden) {
+    this.notificationSysteme(titre, corps);
+  } else {
+    this.ajouterBandeau(titre, corps);
+  }
+}
+
+private notificationSysteme(titre: string, corps: string): void {
+  const notification = new Notification(titre, {
+    body: corps,
+    // tag : les notifications partageant un tag se REMPLACENT au lieu de
+    // s'empiler. Sans lui, dix messages reçus pendant une absence
+    // produiraient dix bulles superposées.
+    tag: 'mon-app-message',
+    icon: '/favicon.ico'
+  });
+
+  notification.onclick = () => {
+    // Ramener la fenêtre au premier plan : cliquer sur une notification sans
+    // que rien ne s'affiche serait déroutant.
+    window.focus();
+    this.router.navigate(['/messages']);
+    notification.close();
+  };
+}
+```
+
+### Savoir ce qui est vraiment nouveau
+
+Le piège de fond n'est pas l'affichage, c'est la **détection**. Le sondage renvoie à chaque tour la liste **complète** des non-lus. Notifier bêtement à chaque réponse produirait une alerte toutes les quinze secondes pour un message qu'on n'a pas encore ouvert.
+
+```typescript
+/** Les identifiants déjà vus, pour ne notifier qu'une fois par message. */
+private dejaVus = new Set<number>();
+
+/**
+ * Le premier tour établit l'état de départ SANS notifier : sinon, ouvrir
+ * l'application annoncerait d'un coup tous les messages en attente — or ils
+ * ne sont pas « nouveaux », ils étaient déjà là.
+ */
+private premierTour = true;
+
+private signalerLesNouveaux(messages: Message[]): void {
+  if (!this.premierTour) {
+    for (const message of messages) {
+      if (!this.dejaVus.has(message.id)) {
+        this.notifications.notifier(
+          `Message de ${message.expediteur.nomAffichage}`, message.contenu);
+      }
+    }
+  }
+
+  // On REMPLACE l'ensemble plutôt que d'y ajouter : un message lu disparaît de
+  // la réponse, et doit donc sortir de la mémoire. Sinon elle grossirait sans
+  // fin au fil de la session.
+  this.dejaVus = new Set(messages.map(m => m.id));
+  this.premierTour = false;
+}
+```
+
+Et la remise à zéro à l'arrêt du suivi, sinon se reconnecter annoncerait de nouveau tout l'arriéré :
+
+```typescript
+arreterSuiviNonLus(): void {
+  /* … */
+  this.dejaVus.clear();
+  this.premierTour = true;
+}
+```
+
+### Le repli : des bandeaux dans l'application
+
+```typescript
+private ajouterBandeau(titre: string, corps: string): void {
+  const id = this.prochainId++;
+  this.bandeauxSignal.update(liste => [...liste, { id, titre, corps }]);
+
+  // Disparition automatique : un bandeau informe, il n'a pas à rester à
+  // l'écran jusqu'à ce qu'on le ferme.
+  setTimeout(() => this.fermerBandeau(id), DUREE_BANDEAU_MS);
+}
+```
+
+```html
+<!-- role="status" + aria-live="polite" : un lecteur d'écran annonce
+     l'apparition du bandeau sans interrompre ce qu'il est en train de lire. -->
+<div class="pile-bandeaux" role="status" aria-live="polite">
+  @for (bandeau of notifications.bandeaux(); track bandeau.id) { … }
+</div>
+```
+
+```css
+/* position: fixed — les bandeaux sont ancrés à la FENÊTRE, pas au document :
+   ils restent visibles même si la page est défilée. */
+.pile-bandeaux {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 50;
+  width: min(22rem, calc(100vw - 2rem));
+}
+```
+
+Ils vivent dans la **coquille** (`app.html`) et non dans la page Messages : une notification doit pouvoir apparaître quelle que soit la page affichée — même raisonnement que les bannières d'erreur et de chargement de la section 17.
+
+### Dire à l'utilisateur où il en est
+
+Les quatre états de la permission n'appellent ni le même texte ni la même action. `@switch` (section 20) les sépare proprement :
+
+```html
+@switch (permissionNotifications()) {
+  @case ('granted')      { <p>Les notifications sont activées.</p> }
+  @case ('denied')       { <p>Vous les avez refusées. Un site ne peut pas
+                              redemander l'autorisation lui-même : il faut la
+                              rétablir dans les réglages du navigateur.</p> }
+  @case ('indisponible') { <p>Ce navigateur ne les propose pas.</p> }
+  @default               { <button type="button" (click)="activer()">Activer</button> }
+}
+```
+
+Le cas `'denied'` mérite une vraie explication plutôt qu'un bouton qui ne ferait rien : l'utilisateur doit comprendre que la balle est dans son camp, et que le repli en bandeau continue de fonctionner entre-temps.
+
+### Dans le projet
+
+**Service** — [`carnet-contact_frontend/src/app/services/notification.ts`](../carnet-contact_frontend/src/app/services/notification.ts)
+
+**Détection des nouveaux messages** — [`carnet-contact_frontend/src/app/services/message.ts`](../carnet-contact_frontend/src/app/services/message.ts)
+
+**Affichage des bandeaux** — [`carnet-contact_frontend/src/app/app.html`](../carnet-contact_frontend/src/app/app.html), [`app.css`](../carnet-contact_frontend/src/app/app.css)
+
+**Activation** — [`carnet-contact_frontend/src/app/pages/profil/profil.ts`](../carnet-contact_frontend/src/app/pages/profil/profil.ts), [`profil.html`](../carnet-contact_frontend/src/app/pages/profil/profil.html)
+
+**Tests** — [`services/notification.spec.ts`](../carnet-contact_frontend/src/app/services/notification.spec.ts), [`services/message.spec.ts`](../carnet-contact_frontend/src/app/services/message.spec.ts)
+
+jsdom, l'environnement de test, n'implémente pas l'API `Notification` : c'est exactement le cas « navigateur sans notifications système », qui se teste donc sans rien simuler. Pour le sondage, les **minuteurs simulés** de vitest permettent d'avancer le temps à la demande :
+
+```typescript
+// La variante …Async est indispensable : elle vide aussi la file des
+// micro-tâches, donc la requête HTTP a le temps de partir.
+const avancerDe = (ms: number) => vi.advanceTimersByTimeAsync(ms);
+
+it('annonce uniquement les messages arrivés depuis le tour précédent', async () => {
+  const espion = vi.spyOn(notifications, 'notifier');
+
+  service.demarrerSuiviNonLus();
+  await avancerDe(0);
+  backend.expectOne('/api/messages/non-lus').flush([message(1, 'Bonjour')]);
+
+  await avancerDe(INTERVALLE_NON_LUS_MS);
+  backend.expectOne('/api/messages/non-lus')
+    .flush([message(1, 'Bonjour'), message(2, 'Toujours là ?')]);
+
+  expect(espion).toHaveBeenCalledTimes(1);
+  expect(espion).toHaveBeenCalledWith('Message de Bob', 'Toujours là ?');
+});
+```
+
+| Outil de test | Rôle |
+|---|---|
+| `vi.useFakeTimers()` / `vi.useRealTimers()` | Remplace puis restaure les minuteurs du navigateur |
+| `vi.advanceTimersByTimeAsync(ms)` | Avance le temps et vide la file des micro-tâches |
+| `vi.spyOn(objet, 'methode')` | Observe les appels d'une méthode sans changer son comportement |
+
+---
+
+## 29. Backend Spring Boot
 
 Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
 
@@ -2999,7 +4591,7 @@ Le principe est exactement le même que l'injection de dépendances vue côté A
 
 ---
 
-## 23. Git et GitHub
+## 30. Git et GitHub
 
 Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
 
@@ -3056,7 +4648,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 
 ---
 
-## 24. Pense-bête de dépannage
+## 31. Pense-bête de dépannage
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
@@ -3080,12 +4672,12 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Une liste ne se met pas à jour après un ajout ou une suppression faits par un autre composant | Chaque composant possède sa propre copie de la donnée dans un signal local | Déplacer la donnée dans le service (signal partagé, voir section 12) plutôt que de recharger la page |
 | Le formulaire d'édition reste vide alors que la fiche s'affiche bien | Formulaire pré-rempli à la construction, avant l'arrivée des données du signal partagé | Pré-remplir dans un `effect()` qui réagit au signal, pas dans le `constructor` directement (section 14) |
 | Le formulaire d'édition efface la saisie en cours de temps en temps | Un `effect()` de pré-remplissage se réexécute à chaque changement du signal (ex : rechargement de la liste) | Ajouter un drapeau booléen : ne `patchValue()` qu'une seule fois |
-| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 22) ; regarder la ligne `preflight` dans l'onglet Réseau |
+| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 29) ; regarder la ligne `preflight` dans l'onglet Réseau |
 | Modification enregistrée côté serveur mais la fiche affiche encore l'ancienne valeur | Le signal partagé n'a pas été mis à jour après le `PUT` | Dans le service, `.update()` avec `.map()` pour remplacer l'élément modifié par la réponse du serveur |
 | `NG0203` / `inject() must be called from an injection context` sur un `effect()` | `effect()` appelé hors constructeur / hors champ de classe | Le déplacer dans le `constructor` du composant |
 | Backend éteint ou en erreur : liste vide, formulaire sans réaction, aucun message | `.subscribe()` n'a qu'un callback de succès, l'erreur du flux n'est traitée nulle part | `.pipe(catchError(...))` dans le service + un signal d'erreur affiché (section 15) |
 | `catchError` provoque `Type 'void' is not assignable to type 'ObservableInput<...>'` | Le callback de `catchError` ne retourne pas d'Observable | Retourner `of(valeurDeRepli)`, `EMPTY`, ou `throwError(() => err)` |
-| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 22) |
+| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 29) |
 | Une modification du code (nouveau signal, `delay()` ajouté...) reste sans effet dans le navigateur | Le rechargement à chaud de `ng serve` n'a pas pris (fréquent sous Windows / avec le SSR) | `Ctrl + C` sur `ng serve`, `npm start`, attendre `bundle generation complete`, puis `Ctrl + Shift + R` dans le navigateur |
 | L'indicateur de chargement ne s'affiche jamais au rafraîchissement de la page | Le `GET` initial part côté serveur (SSR) : `chargement` passe à `true` puis `false` avant l'envoi du HTML | Normal ; l'indicateur n'apparaît que sur les requêtes déclenchées par un clic (ajout, modif, suppression), section 16 |
 | L'indicateur de chargement reste allumé après une erreur réseau | `set(false)` placé seulement dans `.subscribe(next)`, qui ne s'exécute pas en cas d'erreur | Le mettre dans `finalize()` du `.pipe()`, qui s'exécute quelle que soit l'issue (section 16) |
@@ -3110,3 +4702,41 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | `Repeated column in mapping for entity` sur une entité à deux relations vers le même type | Les deux `@ManyToOne` visent la même colonne par défaut | Nommer chaque colonne : `@JoinColumn(name = "expediteur_id")` (section 19) |
 | `null` s'affiche littéralement dans un champ de formulaire pré-rempli | Le backend renvoie `null` pour un champ optionnel, alors qu'un contrôle attend une chaîne | Convertir au `patchValue()` : `c.emailPro ?? ''` (section 19) |
 | Les logos de réseaux sociaux restent noirs malgré la couleur CSS | Le tracé SVG a une couleur figée dans l'attribut `fill` | Utiliser `fill: currentColor` en CSS et ne pas fixer `fill` dans le SVG (section 20) |
+| La liste affiche le résultat d'une recherche précédente, pas la dernière tapée | Réponses revenues dans le désordre : la lente écrase la récente | `switchMap` à la place d'un `.subscribe()` par appel — il annule la requête précédente (section 22) |
+| Après la première erreur réseau, la recherche ne repart plus jamais | `catchError` placé **à l'extérieur** du `switchMap` : il termine le flux externe pour de bon | Le déplacer à l'intérieur, sur la requête elle-même (section 22) |
+| Une requête part à chaque touche frappée | `valueChanges` branché directement sur l'appel HTTP | `debounceTime(300)` puis `distinctUntilChanged()` avant le `subscribe` (section 22) |
+| Une recherche depuis la page 3 ne renvoie rien alors que des résultats existent | Le numéro de page n'a pas été remis à zéro : on demande les résultats 19 à 24 d'une liste qui en a trois | `pageSignal.set(0)` dans la méthode de recherche (section 22) |
+| `?taille=1000000` fait tout charger d'un coup | La taille de page vient du client sans être bornée | `Math.clamp(taille, 1, 50)` dans le contrôleur (section 22) |
+| La page de détail affiche « introuvable » pour un contact qui existe | Elle cherche dans le signal de liste, qui ne contient plus qu'une page depuis la pagination | Ajouter un `GET /api/x/{id}` et un signal dédié (section 22) |
+| Après un ajout, le contact n'apparaît pas au bon endroit (ou pas du tout) | La liste paginée a été mise à jour à la main, alors que le découpage est calculé par le serveur | Recharger la page courante après l'écriture au lieu de modifier le signal (section 22) |
+| Le message d'erreur est technique (« Erreur 500 ») et ne dit pas ce qui a échoué | L'intercepteur ne connaît que le statut, pas l'intention de l'appel | Attacher un libellé par `HttpContextToken` et le composer avec la raison technique (section 23) |
+| Le message d'erreur ne mentionne plus l'action alors qu'un libellé a été passé | `new HttpContext().set(...)` rend une **copie** : la valeur de retour a été ignorée | Réaffecter : `ctx = ctx.set(JETON, valeur)` (section 23) |
+| La bannière « Chargement… » clignote toutes les quelques secondes | Le sondage périodique passe par l'intercepteur de chargement comme une requête ordinaire | Marquer ces requêtes `discret` et sortir tôt dans l'intercepteur (sections 23 et 25) |
+| Toutes les requêtes échouent d'un coup au bout de 15 minutes | Le jeton d'accès a expiré et rien ne le renouvelle | Intercepteur de rafraîchissement + jeton long stocké en base (section 24) |
+| L'utilisateur est déconnecté alors que le rafraîchissement aurait dû marcher | Plusieurs 401 simultanés ont lancé plusieurs rotations ; les dernières présentent un jeton déjà révoqué | Mutualiser l'appel : un seul Observable partagé par `shareReplay(1)` (section 24) |
+| Boucle infinie d'appels à `/auth/rafraichir` | L'intercepteur tente de renouveler l'appel de renouvellement lui-même | Sortie anticipée sur `req.url.includes('/api/auth/')` (section 24) |
+| Le 401 déconnecte avant toute tentative de renouvellement | L'intercepteur de rafraîchissement est placé trop haut dans `withInterceptors` | Le mettre **en dernier** : au retour, le plus profond voit l'erreur en premier (section 24) |
+| Après une reconnexion, le rafraîchissement échoue systématiquement | Seul le jeton d'accès a été mémorisé : la rotation a émis un nouveau jeton long, perdu | Enregistrer les **deux** jetons à chaque réponse d'authentification (section 24) |
+| Le rendu SSR ne se termine jamais : la page ne s'affiche pas, la requête expire | Un `timer` / `interval` démarré côté serveur empêche l'application d'être « stable » | Garder le sondage derrière `isPlatformBrowser(inject(PLATFORM_ID))` (section 25) |
+| Le nombre de requêtes de sondage double, puis quadruple | La méthode de démarrage a été appelée plusieurs fois, empilant les timers | Garde-fou `if (this.suivi) return;` avant de s'abonner (section 25) |
+| Des 401 arrivent toutes les 15 secondes après la déconnexion | Le sondage n'a pas été arrêté : il continue avec un jeton devenu invalide | Arrêter l'abonnement dans l'`effect()` qui suit l'état connecté (section 25) |
+| Le sondage continue après avoir quitté la page | Aucun désabonnement à la destruction du composant | `ngOnDestroy()` qui appelle la méthode d'arrêt du service (section 25) |
+| `Expected one matching request…, found none` dans un test alors que la requête part bien | La requête est déclenchée par un `timer`, qui passe par la file des tâches — `whenStable()` ne l'attend pas | Rendre la main une fois : `await new Promise(r => setTimeout(r, 0))` (section 26) |
+| `Vitest caught unhandled errors` : `NG04002 Cannot match any routes` | Un intercepteur navigue vers `/connexion`, absente du `provideRouter([])` du test | Déclarer la route dans le test : `provideRouter([{ path: 'connexion', children: [] }])` (section 26) |
+| Un test passe seul mais échoue quand toute la suite tourne | Des données d'un test précédent traînent en base | `@Transactional` sur la classe de test (annulation automatique) et `create-drop` dans `src/test/resources` (section 26) |
+| `No qualifying bean of type 'ObjectMapper'` dans un test Spring Boot 4 | Jackson 3 n'expose plus le même type de bean qu'en Boot 3 | Lire le JSON avec `JsonPath.read(corps, "$.champ")`, déjà disponible via les dépendances de test (section 26) |
+| `An error was thrown in afterAll` / erreur non gérée sur un test d'intercepteur | L'intercepteur relance l'erreur et le `subscribe` n'a pas de callback `error` | `subscribe({ error: () => {} })` sur les appels censés échouer (section 26) |
+| Cliquer sur « Afficher le mot de passe » soumet le formulaire | Un `<button>` sans `type` vaut `type="submit"` dans un `<form>` | Toujours écrire `type="button"` sur un bouton qui n'envoie pas le formulaire (section 27) |
+| Le bouton reste désactivé alors que tous les critères sont cochés en vert | La liste affichée et le validateur ne s'appuient pas sur la même source | Faire lire la même fonction `verifie` aux deux, et le vérifier par un test (section 27) |
+| Après avoir basculé entre connexion et inscription, le formulaire garde l'ancien verdict | `setValidators()` change la règle mais ne rejoue pas la validation | Enchaîner avec `champ.updateValueAndValidity()` (section 27) |
+| Impossible de se connecter à un ancien compte depuis le durcissement du mot de passe | La règle de solidité a été appliquée aussi à la connexion | Ne l'appliquer qu'à la création : un haché ne peut pas être revalidé (section 27) |
+| Un mot de passe accepté par le formulaire est refusé par l'API | Les deux versions de la politique ont divergé | Les garder chacune dans son fichier et les couvrir par des tests symétriques (section 27) |
+| `aria-pressed` / `aria-label` dynamique reste vide dans le HTML | `[aria-pressed]` vise une propriété DOM qui n'existe pas | Utiliser la forme attribut : `[attr.aria-pressed]` (section 27) |
+| `Notification.requestPermission()` n'ouvre aucune fenêtre | La demande ne fait pas suite à un geste de l'utilisateur ; les navigateurs l'ignorent | La déclencher depuis un `(click)`, jamais au démarrage (section 28) |
+| Impossible de redemander la permission après un refus | `denied` est définitif du point de vue du site | Prévoir un repli qui marche sans, et expliquer le chemin dans les réglages du navigateur (section 28) |
+| `Notification is not defined` au démarrage ou dans les tests | Rendu côté serveur, ou environnement sans cette API (jsdom) | Tester `isPlatformBrowser(...) && 'Notification' in window` avant tout usage (section 28) |
+| Une notification pour chaque message non lu, toutes les quinze secondes | Le sondage renvoie la liste complète à chaque tour | Mémoriser les identifiants déjà vus, et remplacer l'ensemble à chaque réponse (section 28) |
+| Ouvrir l'application annonce d'un coup tous les messages en attente | Le premier tour de sondage est traité comme les suivants | Faire du premier tour une simple prise d'état, sans notification (section 28) |
+| Dix notifications système empilées après une absence | Chaque appel crée une bulle distincte | Leur donner le même `tag` : elles se remplacent au lieu de s'empiler (section 28) |
+| Une notification système s'affiche alors qu'on a la page sous les yeux | Le canal est choisi sans regarder si l'onglet est actif | Conditionner à `document.hidden`, et se rabattre sur un bandeau sinon (section 28) |
+| Un test à minuteurs simulés se bloque sur une requête HTTP qui ne part jamais | `advanceTimersByTime` n'attend pas la file des micro-tâches | Utiliser la variante `await vi.advanceTimersByTimeAsync(ms)` (section 28) |

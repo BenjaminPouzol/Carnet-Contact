@@ -339,16 +339,225 @@ réutilisables : input() et boucles de configuration »**, **section 21 « Mise
 en forme : variables CSS et cohérence visuelle »**. 14 entrées ajoutées au
 pense-bête. Sections Backend/Git/Pense-bête renumérotées 22/23/24.
 
+### Partie 10 — Les quatre chantiers de consolidation, plus les tests
+Demande de l'utilisateur : traiter d'un coup les axes d'amélioration 2 à 6
+identifiés en début de session — tests, rafraîchissement du jeton, messagerie
+en temps réel, pagination/recherche, nuance des messages d'erreur.
+
+Seconde livraison groupée d'affilée, mais pour un motif différent de la
+Partie 9 : ici rien n'était ambigu, il n'y avait donc pas de questions
+préalables à poser. En revanche l'**ordre** a été choisi contre celui de la
+demande. Les tests, listés en premier, ont été écrits en **dernier** : les
+quatre autres chantiers changeaient la forme de la réponse de l'API, la
+signature de `session.ouvrir()` et le contenu des services. Des tests écrits
+d'abord auraient été réécrits quatre fois.
+
+#### Pagination et recherche (axe 5)
+48. Backend : `@Query` avec `Pageable`, recherche sur nom OU prénom OU email,
+    `Math.clamp` pour borner la taille demandée. Réponse enveloppée dans un
+    `record PageContacts` maison plutôt que le `Page<T>` de Spring Data, dont
+    la forme JSON n'est pas un contrat stable
+49. **Conséquence non demandée mais nécessaire** : découper la liste rend
+    fausse l'hypothèse « le signal contient tous les contacts ». Les pages
+    détail et édition, qui cherchaient avec un `computed()` (Partie 4),
+    affichaient « introuvable » pour un contact situé sur une autre page. D'où
+    un `GET /api/contacts/{id}` et un signal `contactCourant`
+50. Frontend : `Subject` + `switchMap` dans le service (réponses dans le
+    désordre), `debounceTime` + `distinctUntilChanged` + `takeUntilDestroyed`
+    dans le composant (une requête par frappe). Point clé répété deux fois
+    ensuite : `catchError` **à l'intérieur** du `switchMap`
+51. Autre conséquence : `addContact` / `deleteContact` ne peuvent plus mettre
+    le signal à jour à la main — le découpage appartient au serveur
+
+#### Contexte HTTP et messages d'erreur (axe 6)
+52. `HttpContextToken` : `LIBELLE_ACTION` et `DISCRET`, plus un raccourci
+    `contexte({ libelle, discret })`. Le service déclare une DONNÉE (ce qu'il
+    faisait), l'intercepteur garde toute la LOGIQUE — la troisième voie entre
+    « message générique » et « retour du `catchError` métier partout »
+53. `erreurInterceptor` découpé en `raisonTechnique()` (fragment de phrase) et
+    `messagePour()` (recollage). La contrepartie assumée en Partie 8 est donc
+    levée sans réintroduire la duplication qui l'avait motivée
+54. `DISCRET` sert aussi au chantier suivant : sortie anticipée dans
+    `chargementInterceptor`, silence dans `erreurInterceptor`
+
+#### Renouvellement du jeton (axe 3)
+55. Jeton d'accès ramené de 24 h à **15 min**, plus un jeton de
+    rafraîchissement de 7 jours. Choix structurant : ce second jeton est une
+    valeur aléatoire **stockée en base** (`SecureRandom`, entité
+    `JetonRafraichissement`), pas un second JWT. Motif pédagogique explicite :
+    un second JWT serait tout aussi irrévocable, et ferait s'effondrer l'intérêt
+    du montage. C'est le stockage serveur qui rend la révocation possible
+56. **Rotation** à chaque usage : l'ancien est révoqué. Un jeton volé devient
+    détectable au lieu d'être exploitable sept jours en silence
+57. La déconnexion devient réelle (`POST /api/auth/deconnexion`) : jusqu'ici
+    elle ne faisait qu'oublier le jeton côté navigateur
+58. Cinquième intercepteur, placé **en dernier** — donc au plus profond, donc
+    premier à voir l'erreur au retour, avant qu'`erreurInterceptor` ne
+    déconnecte. L'ordre fait partie du comportement, et un test le vérifie
+59. La vraie difficulté n'est pas l'appel mais la **concurrence** : trois 401
+    simultanés lanceraient trois rotations, dont deux échoueraient. Résolu par
+    un Observable mutualisé (`shareReplay(1)` + `finalize`)
+
+#### Messagerie en temps réel (axe 4)
+60. Sondage périodique par `timer(0, N)` + `switchMap` : 5 s pour le fil
+    ouvert, 15 s pour la pastille de non-lus. Le compteur émis par `timer` sert
+    à ne rendre discrètes que les requêtes à partir de la deuxième — le premier
+    chargement, lui, vient d'un clic et mérite l'indicateur
+61. Le sujet réel de la partie est le **cycle de vie**, pas RxJS : arrêt à la
+    déconnexion (sinon un 401 toutes les 15 s), arrêt dans `ngOnDestroy`,
+    garde-fou contre le double démarrage, et surtout garde `isPlatformBrowser`
+    — un timer côté SSR empêche l'application d'être « stable » et le rendu ne
+    se termine jamais
+
+#### Tests (axe 2)
+62. Backend, 28 tests : `JwtServiceTest` (unitaire pur, sans contexte Spring —
+    l'injection par constructeur permet de fabriquer un jeton déjà périmé avec
+    une durée négative), `ContactControllerTest` et `AuthControllerTest`
+    (`@SpringBootTest` + `@AutoConfigureMockMvc` + `@Transactional`)
+63. Frontend, 32 tests : `provideHttpClientTesting` pour les services et
+    intercepteurs, bouchon d'`ActivatedRoute` pour les pages. Les six `.spec.ts`
+    générés par le CLI étaient tous obsolètes (l'un référençait une classe
+    `Contact` inexistante, un autre cherchait « Hello, carnet-contact ») :
+    remplacés, pas rafistolés
+64. Critère de choix appliqué : tester ce qui est **invisible** (isolation
+    entre comptes, absence du mot de passe dans le JSON), ce qu'on **ne sait pas
+    provoquer à la main** (jeton expiré, réponses dans le désordre, trois 401
+    simultanés), et ce dont on a **justifié la forme précise** dans un
+    commentaire (position du `catchError`, ordre des intercepteurs)
+
+#### Vérifications faites
+- `.\mvnw.cmd test` : 28 tests au vert. `npm test` : 32 tests au vert
+- `ng build` passe, prérendu SSR compris
+- Bout en bout au `curl` contre le backend réel : pagination (2 pages sur 8
+  contacts), recherche insensible à la casse et sur les trois champs, taille
+  bornée à 50 malgré `?taille=99999`, page hors limites qui rend une liste vide,
+  `GET /contacts/{id}` en 200 / 404, rotation du jeton (l'ancien refusé en 401),
+  déconnexion serveur (204 puis 401), isolation entre comptes
+- `ng serve` interrogé à l'exécution : `/connexion`, `/` et `/messages`
+  répondent en 200 en quelques dizaines de millisecondes — ce qui **prouve** que
+  la garde `isPlatformBrowser` fonctionne, un timer parti côté serveur aurait
+  fait expirer ces requêtes
+- Non vérifié, toujours : le parcours réel dans un navigateur (aucun navigateur
+  disponible dans l'environnement)
+
+Deux incidents d'environnement à retenir : la version de Surefire épinglée par
+Spring Boot 4.1.1 (3.5.6) n'était pas complète dans le dépôt Maven local, il a
+fallu autoriser le réseau pour `mvnw test` ; et Spring Boot 4 embarque Jackson 3,
+qui n'expose plus de bean `ObjectMapper` — les tests lisent le JSON avec
+`JsonPath.read`.
+
+Notions ajoutées au support : **section 22 « Pagination et recherche côté
+serveur »**, **section 23 « Contexte d'une requête HTTP (`HttpContext`) »**,
+**section 24 « Renouvellement du jeton d'accès »**, **section 25
+« Rafraîchissement automatique (sondage périodique) »**, **section 26 « Tests
+automatisés »**. 24 entrées ajoutées au pense-bête. Sections Backend/Git/
+Pense-bête renumérotées 27/28/29.
+
+Nouveauté de forme dans le support : quatre encadrés **« Note de mise à jour »**
+insérés sous des exemples devenus faux (le `computed()` des sections 3 et 13, le
+`chargerContacts()` de la section 14, la requête dérivée des sections 18 et 19).
+Ils disent ce qui a changé et surtout ce qui n'a **pas** changé, plutôt que de
+réécrire la section — pour qu'une relecture du document dans l'ordre reste
+cohérente avec le code actuel. Convention à reprendre.
+
+### Partie 11 — Mot de passe et notifications
+Trois demandes de l'utilisateur, formulées ensemble : conditions de solidité à
+la création d'un compte, possibilité d'afficher le mot de passe tapé, et
+notification à l'arrivée d'un message.
+
+Les deux premières touchent le même formulaire et se sont donc traitées d'un
+bloc ; la troisième se greffe sur le sondage déjà en place depuis la Partie 10,
+ce qui a réduit le travail à la détection et à l'affichage.
+
+#### Mot de passe : la règle des deux côtés
+65. `PolitiqueMotDePasse` côté Java (classe finale, constructeur privé,
+    méthodes statiques) : 10 caractères, minuscule, majuscule, chiffre,
+    caractère spécial. Elle renvoie la LISTE de ce qui manque, pas un booléen —
+    « refusé » sans dire pourquoi oblige à deviner
+66. Point pédagogique central de la partie : la validation du navigateur est un
+    **confort d'interface**, celle du serveur une **sécurité**. Les deux sont
+    nécessaires, pour des raisons différentes. D'où deux fichiers isolés
+    (`PolitiqueMotDePasse.java` / `validateurs/mot-de-passe.ts`), faciles à
+    comparer, et des tests symétriques des deux côtés
+67. Second point, plus subtil : les règles de composition mesurent la FORME, pas
+    la solidité. « Motdepasse1! » coche les cinq critères. D'où une petite liste
+    de mots de passe trop courants, dont certaines entrées passent exprès tous
+    les critères de forme — c'est ce qui rend la démonstration parlante
+68. Validateur personnalisé Angular (`ValidatorFn`), avec la convention
+    contre-intuitive `null = valide`. Il transporte la liste des critères
+    manquants, pas seulement un drapeau
+69. Une seule constante `CRITERES_MOT_DE_PASSE` sert à valider ET à afficher la
+    liste à cocher — même principe que `RESEAUX` en Partie 9. Un test veille
+    explicitement à ce que les deux usages ne puissent pas diverger
+70. `setValidators()` + `updateValueAndValidity()` : la règle s'applique à
+    l'inscription et PAS à la connexion. Justification : un compte créé sous
+    l'ancienne politique doit pouvoir entrer, et on ne peut pas revalider un
+    mot de passe existant puisqu'on n'en stocke que le haché
+71. Ordre de vérification dans le contrôleur : 400 (requête mal formée) avant
+    409 (conflit d'état). Un test existant a dû être corrigé, son mot de passe
+    bidon tombant désormais sur le 400 avant d'atteindre le 409
+
+#### Afficher le mot de passe
+72. Signal `motDePasseVisible` + `[type]` en binding de propriété. Deux détails
+    qui valaient d'être écrits noir sur blanc : `type="button"` obligatoire
+    (sans lui le bouton soumet le formulaire — piège classique et silencieux)
+    et `[attr.aria-pressed]` plutôt que `[aria-pressed]`, les attributs `aria-*`
+    n'ayant pas de propriété DOM correspondante
+
+#### Notifications
+73. `NotificationService` avec DEUX canaux, parce qu'aucun ne suffit : la
+    notification système est la seule visible quand l'onglet est en
+    arrière-plan, mais elle exige une permission refusable définitivement ; le
+    bandeau interne marche toujours mais seulement si la page est regardée.
+    Règle retenue : système si `document.hidden` ET permission accordée,
+    bandeau sinon
+74. Quatrième valeur « indisponible » ajoutée aux trois de l'API, pour le cas où
+    `Notification` n'existe pas (SSR, vieux navigateur) — sinon il faudrait
+    tester `typeof Notification` à chaque usage
+75. La permission se demande depuis un CLIC (bouton dans la page Profil) : les
+    navigateurs ignorent une demande qui ne suit pas un geste. Et un refus est
+    définitif côté site, d'où un `@switch` à quatre cas qui explique à
+    l'utilisateur où il en est, plutôt qu'un bouton inopérant
+76. Le vrai piège n'était pas l'affichage mais la DÉTECTION : le sondage renvoie
+    à chaque tour la liste complète des non-lus. Sans mémoire, une alerte
+    toutes les quinze secondes. Résolu par un `Set` d'identifiants déjà vus,
+    remplacé (et non complété) à chaque réponse, plus un drapeau « premier
+    tour » qui observe sans annoncer — et remis à zéro à la déconnexion
+
+#### Vérifications faites
+- Backend : 38 tests (dont 9 nouveaux sur la politique, avec
+  `@ParameterizedTest`). Frontend : 58 tests (dont 26 nouveaux — validateur,
+  service de notification, détection des nouveaux messages, formulaire)
+- `ng build` passe, prérendu SSR compris
+- Politique vérifiée au `curl` contre le vrai serveur : chaque critère manquant
+  produit bien son message, et `Motdepasse1!` est refusé pour la seule raison
+  d'être trop courant
+- Non vérifié : l'affichage réel des notifications système, qui demande un vrai
+  navigateur et une permission accordée à la main
+
+Incident à retenir : la première série de `curl` a interrogé le backend que
+l'utilisateur avait lancé de son côté — donc l'ancien code — et semblait montrer
+que la politique ne s'appliquait pas. Le journal du serveur, lui, disait « Port
+8080 was already in use ». Réflexe à garder : quand un résultat contredit le
+code qu'on vient d'écrire, vérifier D'ABORD que c'est bien ce code qui tourne.
+La vérification a été refaite sur le port 8099 pour ne pas couper le serveur de
+l'utilisateur.
+
+Notions ajoutées au support : **section 27 « Saisie et validation d'un mot de
+passe »** et **section 28 « Notifications du navigateur »**. 13 entrées ajoutées
+au pense-bête. Sections Backend/Git/Pense-bête renumérotées 29/30/31.
+
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
-- Pagination et recherche côté backend
-- Tests unitaires (fichiers `.spec.ts` déjà générés par le CLI, jamais 
-  exploités jusqu'ici) — d'autant plus utiles maintenant que la logique
-  d'autorisation mériterait d'être verrouillée par des tests
-- Rafraîchissement du jeton (actuellement 24 h, puis reconnexion)
-- Messagerie : les nouveaux messages n'arrivent qu'au rechargement du fil
-  (pas de temps réel ni de rafraîchissement périodique)
+- Parcours complet dans un vrai navigateur — la seule vérification jamais faite
+  depuis le début du projet, et la seule façon de voir les notifications
+  système à l'œuvre
+- Messagerie : passer du sondage à un vrai temps réel (WebSocket ou SSE), ce qui
+  supprimerait les requêtes inutiles quand rien ne change
+- Persistance réelle : H2 est en mémoire, tout disparaît au redémarrage
+- Tests : rien ne couvre encore la messagerie ni le composant `reseaux-sociaux`
+- Accessibilité et navigation au clavier, jamais examinées
 
 ## Comment poursuivre cette philosophie
 
