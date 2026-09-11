@@ -85,6 +85,17 @@ public class SecurityConfig {
                         // Console H2, pratique en développement.
                         .requestMatchers("/h2-console/**").permitAll()
 
+                        // Le panel d'administration exige le rôle ADMIN, en un
+                        // seul endroit pour toutes ses routes. On pourrait
+                        // aussi annoter chaque méthode (@PreAuthorize), mais
+                        // une règle centralisée se relit d'un coup d'œil et ne
+                        // peut pas être oubliée sur une route ajoutée plus tard.
+                        //
+                        // hasRole("ADMIN") cherche l'autorité « ROLE_ADMIN » :
+                        // Spring Security ajoute le préfixe lui-même, d'où
+                        // l'obligation de NE PAS l'écrire ici.
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
                         // /error doit rester ouvert. Quand un contrôleur lève
                         // une ResponseStatusException, Spring réachemine la
                         // requête en interne vers /error — et sur ce second

@@ -1,5 +1,6 @@
 package com.example.carnet_contact_backend.security;
 
+import com.example.carnet_contact_backend.model.Role;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -28,7 +29,7 @@ class JwtServiceTest {
     void jetonValide_rendLEmail() {
         JwtService service = new JwtService(SECRET, 60_000);
 
-        String jeton = service.genererJeton("alice@exemple.fr");
+        String jeton = service.genererJeton("alice@exemple.fr", Role.UTILISATEUR);
 
         assertThat(service.emailDuJeton(jeton)).isEqualTo("alice@exemple.fr");
     }
@@ -39,7 +40,7 @@ class JwtServiceTest {
         JwtService emetteur = new JwtService("une-tout-autre-cle-de-32-caracteres-au-moins", 60_000);
         JwtService verificateur = new JwtService(SECRET, 60_000);
 
-        String jetonEtranger = emetteur.genererJeton("mallory@exemple.fr");
+        String jetonEtranger = emetteur.genererJeton("mallory@exemple.fr", Role.UTILISATEUR);
 
         // C'est LE test qui justifie tout le mécanisme : n'importe qui peut
         // fabriquer un JWT, mais seule la bonne clé produit une signature que
@@ -51,7 +52,7 @@ class JwtServiceTest {
     @DisplayName("Un jeton dont le contenu a été modifié est refusé")
     void jetonModifie_rendNull() {
         JwtService service = new JwtService(SECRET, 60_000);
-        String jeton = service.genererJeton("alice@exemple.fr");
+        String jeton = service.genererJeton("alice@exemple.fr", Role.UTILISATEUR);
 
         // On abîme un caractère de la charge utile (la partie du milieu). La
         // signature ne correspond plus au contenu.
@@ -71,7 +72,7 @@ class JwtServiceTest {
         // qu'un test unitaire permet de faire.
         JwtService service = new JwtService(SECRET, -1_000);
 
-        String jetonPerime = service.genererJeton("alice@exemple.fr");
+        String jetonPerime = service.genererJeton("alice@exemple.fr", Role.UTILISATEUR);
 
         assertThat(service.emailDuJeton(jetonPerime)).isNull();
     }

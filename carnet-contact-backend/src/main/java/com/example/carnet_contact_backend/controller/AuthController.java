@@ -1,6 +1,7 @@
 package com.example.carnet_contact_backend.controller;
 
 import com.example.carnet_contact_backend.model.JetonRafraichissement;
+import com.example.carnet_contact_backend.model.Role;
 import com.example.carnet_contact_backend.model.Utilisateur;
 import com.example.carnet_contact_backend.repository.UtilisateurRepository;
 import com.example.carnet_contact_backend.security.JwtService;
@@ -13,6 +14,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.time.Instant;
 
 /**
  * Les points d'entrée publics de l'API : créer un compte, échanger un couple
@@ -67,7 +70,7 @@ public class AuthController {
     private ReponseAuth ouvrirSession(Utilisateur utilisateur) {
         JetonRafraichissement rafraichissement = rafraichissementService.emettre(utilisateur);
         return new ReponseAuth(
-                jwtService.genererJeton(utilisateur.getEmail()),
+                jwtService.genererJeton(utilisateur.getEmail(), utilisateur.getRole()),
                 rafraichissement.getValeur(),
                 utilisateur);
     }
@@ -106,6 +109,19 @@ public class AuthController {
                 demande.nomAffichage() == null || demande.nomAffichage().isBlank()
                         ? demande.email()
                         : demande.nomAffichage());
+        utilisateur.setDateInscription(Instant.now());
+        utilisateur.setActif(true);
+
+        // Le PREMIER compte créé devient administrateur.
+        //
+        // Il faut bien un point de départ : un rôle d'administrateur ne peut
+        // être donné que par un administrateur, donc sans amorçage personne ne
+        // le serait jamais. C'est la solution la plus simple, et elle se teste
+        // facilement. Sa limite, à connaître : sur une base vide exposée
+        // publiquement, le premier venu devient administrateur — un vrai
+        // déploiement préférerait un compte créé au démarrage à partir de la
+        // configuration.
+        utilisateur.setRole(utilisateurRepository.count() == 0 ? Role.ADMIN : Role.UTILISATEUR);
 
         Utilisateur cree = utilisateurRepository.save(utilisateur);
 
@@ -127,6 +143,15 @@ public class AuthController {
                     .body("Email ou mot de passe incorrect.");
         }
 
+        // Un compte désactivé a des identifiants VALIDES mais n'a plus le droit
+        // d'entrer. 403 et non 401 : « je sais qui tu es, mais c'est refusé » —
+        // et le message est explicite, parce que l'utilisateur ne peut rien y
+        // faire seul, il doit s'adresser à un administrateur.
+        if (!trouve.get().isActif()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body("Ce compte a été désactivé. Contactez un administrateur.");
+        }
+
         return ResponseEntity.ok(ouvrirSession(trouve.get()));
     }
 
@@ -146,8 +171,18 @@ public class AuthController {
         }
 
         return rafraichissementService.faireTourner(demande.jetonRafraichissement())
+                // Un compte désactivé entre-temps ne renouvelle plus rien.
+                // C'est ce qui rend la désactivation effective : le jeton
+                // d'accès déjà émis reste valable jusqu'à son expiration, mais
+                // au plus tard quinze minutes après, la porte est fermée.
+                .filter(nouveau -> nouveau.getUtilisateur().isActif())
                 .<ResponseEntity<?>>map(nouveau -> ResponseEntity.ok(new ReponseAuth(
-                        jwtService.genererJeton(nouveau.getUtilisateur().getEmail()),
+                        // Le rôle est relu en base à chaque rotation : une
+                        // promotion ou une rétrogradation devient donc
+                        // effective au plus tard au bout de quinze minutes.
+                        jwtService.genererJeton(
+                                nouveau.getUtilisateur().getEmail(),
+                                nouveau.getUtilisateur().getRole()),
                         nouveau.getValeur(),
                         nouveau.getUtilisateur())))
                 // 401 et non 403 : le client doit comprendre « reconnecte-toi »,

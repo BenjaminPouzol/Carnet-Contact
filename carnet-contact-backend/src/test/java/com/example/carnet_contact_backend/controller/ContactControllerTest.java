@@ -1,6 +1,7 @@
 package com.example.carnet_contact_backend.controller;
 
 import com.example.carnet_contact_backend.model.Contact;
+import com.example.carnet_contact_backend.model.Role;
 import com.example.carnet_contact_backend.model.Utilisateur;
 import com.example.carnet_contact_backend.repository.ContactRepository;
 import com.example.carnet_contact_backend.repository.UtilisateurRepository;
@@ -77,8 +78,8 @@ class ContactControllerTest {
         alice = creerUtilisateur("alice@exemple.fr");
         bob = creerUtilisateur("bob@exemple.fr");
 
-        jetonAlice = jwtService.genererJeton(alice.getEmail());
-        jetonBob = jwtService.genererJeton(bob.getEmail());
+        jetonAlice = jwtService.genererJeton(alice.getEmail(), Role.UTILISATEUR);
+        jetonBob = jwtService.genererJeton(bob.getEmail(), Role.UTILISATEUR);
     }
 
     private Utilisateur creerUtilisateur(String email) {

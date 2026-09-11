@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -48,6 +49,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String email = jwtService.emailDuJeton(jeton);
 
             if (email != null) {
+                // Les AUTORITÉS : ce que ce compte a le droit de faire. Elles
+                // sont lues dans le jeton, pas en base — c'est tout l'intérêt
+                // du « sans état ». Spring Security les compare ensuite aux
+                // règles de SecurityConfig (`hasRole("ADMIN")`).
+                var autorites = List.of(
+                        new SimpleGrantedAuthority(jwtService.roleDuJeton(jeton).autorite()));
+
                 // On pose l'identité dans le SecurityContext : un porte-clés
                 // propre à la requête en cours, que Spring Security consulte
                 // ensuite pour décider si l'accès est autorisé, et que les
@@ -55,7 +63,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 var authentification = new UsernamePasswordAuthenticationToken(
                         email,      // le "principal" : ici, l'email
                         null,       // pas de mot de passe : le jeton fait foi
-                        List.of()   // aucun rôle : l'application n'en a pas
+                        autorites
                 );
                 SecurityContextHolder.getContext().setAuthentication(authentification);
             }

@@ -32,10 +32,17 @@ public class UtilisateurController {
         return utilisateurConnecte(email);
     }
 
-    /** Les autres comptes : les interlocuteurs possibles de la messagerie. */
+    /**
+     * Les autres comptes : les interlocuteurs possibles de la messagerie.
+     *
+     * Les comptes désactivés en sont exclus — écrire à quelqu'un qui ne peut
+     * plus se connecter n'aurait aucun sens. Leurs anciens messages restent
+     * en revanche visibles dans les fils déjà ouverts : les désactiver coupe
+     * l'accès, cela n'efface pas l'historique.
+     */
     @GetMapping
     public List<Utilisateur> autres(@AuthenticationPrincipal String email) {
-        return utilisateurRepository.findByIdNotOrderByNomAffichageAsc(
+        return utilisateurRepository.findByIdNotAndActifTrueOrderByNomAffichageAsc(
                 utilisateurConnecte(email).getId());
     }
 

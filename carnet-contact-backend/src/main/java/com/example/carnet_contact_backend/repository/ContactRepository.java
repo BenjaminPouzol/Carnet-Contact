@@ -4,6 +4,7 @@ import com.example.carnet_contact_backend.model.Contact;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -45,4 +46,11 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
     // au contact d'un autre : demander /api/contacts/42 quand le 42 n'est pas
     // à soi ne renvoie pas 42, il ne renvoie rien.
     Optional<Contact> findByIdAndProprietaireId(Long id, Long proprietaireId);
+
+    // Pour le tableau d'administration : combien de contacts par compte.
+    long countByProprietaireId(Long proprietaireId);
+
+    @Modifying
+    @Query("DELETE FROM Contact c WHERE c.proprietaire.id = :proprietaireId")
+    void supprimerCeuxDe(@Param("proprietaireId") Long proprietaireId);
 }

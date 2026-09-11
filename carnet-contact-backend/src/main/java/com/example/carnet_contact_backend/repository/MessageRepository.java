@@ -2,6 +2,7 @@ package com.example.carnet_contact_backend.repository;
 
 import com.example.carnet_contact_backend.model.Message;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -33,4 +34,13 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     // Ceux reçus d'un interlocuteur précis : on les marque lus à l'ouverture
     // du fil.
     List<Message> findByDestinataireIdAndExpediteurIdAndLuFalse(Long destinataireId, Long expediteurId);
+
+    // Pour le tableau d'administration : combien de messages échangés, envoyés
+    // comme reçus. Les deux paramètres reçoivent le même identifiant.
+    long countByExpediteurIdOrDestinataireId(Long expediteurId, Long destinataireId);
+
+    @Modifying
+    @Query("DELETE FROM Message m WHERE m.expediteur.id = :utilisateurId "
+            + "OR m.destinataire.id = :utilisateurId")
+    void supprimerCeuxDe(@Param("utilisateurId") Long utilisateurId);
 }
