@@ -718,21 +718,28 @@ le bleu vif et le rouge vif plutôt qu'un blanc plat.
 - Page de connexion capturée dans les deux thèmes, avant et après correction
 - Les deux bidouilles temporaires ayant servi à forcer le thème sombre
   (`index.html`, `theme.ts`) ont été restaurées et vérifiées par `git diff`
-- Toujours pas vérifié : les pages authentifiées (contacts, messages,
-  administration), qui demandent une session et donc un vrai pilotage du
-  navigateur
+- **L'utilisateur a parcouru l'application dans son navigateur et confirmé que
+  tout fonctionne.** C'est la première validation de bout en bout du projet, et
+  elle couvre ce qu'aucune vérification automatisée n'atteignait : les pages
+  authentifiées (contacts, messagerie, administration) et le rendu réel des
+  deux thèmes
+- Nuance à garder en tête pour la suite : cette validation est un retour
+  d'usage, pas un test reproductible. Rien ne la rejouera automatiquement à la
+  prochaine modification — c'est précisément le rôle des 70 tests frontend et
+  des 63 tests backend, qui eux ne couvrent pas l'apparence
 
 Notions ajoutées au support : sous-section **« `primitive` et `semantic` :
 PrimeNG n'impose aucune couleur »** en section 30, et deux sous-sections en
 section 31 (variable partagée devenue inadaptée aux deux thèmes, dégradé de fond
-
 fixe). 4 entrées ajoutées au pense-bête.
+
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
-- Pilotage réel du navigateur pour voir les pages AUTHENTIFIÉES : contacts,
-  messages, administration. La page de connexion est désormais vérifiée dans les
-  deux thèmes, mais tout ce qui demande une session reste invisible
+- Vérification visuelle **reproductible** : le parcours complet a été validé à
+  la main une fois, mais rien ne le rejouera. Piloter un vrai navigateur
+  (session comprise) permettrait de capturer les pages authentifiées à chaque
+  modification, au lieu de s'en remettre à un contrôle humain ponctuel
 - Messagerie : passer du sondage à un vrai temps réel (WebSocket ou SSE), ce qui
   supprimerait les requêtes inutiles quand rien ne change
 - Persistance réelle : H2 est en mémoire, tout disparaît au redémarrage — et
