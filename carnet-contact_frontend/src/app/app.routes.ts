@@ -5,6 +5,7 @@ import { ContactEdit } from './pages/contact-edit/contact-edit';
 import { Connexion } from './pages/connexion/connexion';
 import { Messages } from './pages/messages/messages';
 import { Profil } from './pages/profil/profil';
+import { Fil } from './pages/fil/fil';
 import { authGuard } from './auth-guard';
 import { adminGuard } from './admin-guard';
 
@@ -15,6 +16,10 @@ export const routes: Routes = [
   // canActivate : la garde s'exécute avant d'activer la route. Un tableau,
   // car on peut en enchaîner plusieurs (toutes doivent dire oui).
   { path: '', component: Accueil, pathMatch: 'full', canActivate: [authGuard] },
+
+  // Le fil est chargé avec le reste (pas de loadComponent) : c'est une page
+  // que tout le monde visite, la différer ajouterait une attente au clic.
+  { path: 'fil', component: Fil, canActivate: [authGuard] },
   { path: 'contact/:id', component: ContactDetail, canActivate: [authGuard] },
   { path: 'contact/:id/modifier', component: ContactEdit, canActivate: [authGuard] },
   { path: 'messages', component: Messages, canActivate: [authGuard] },

@@ -1,0 +1,60 @@
+<div class="entete-fil">
+  <h2>Fil d'actualité</h2>
+  <p class="muet">Les hobbies de tout le monde, du plus récent au plus ancien.</p>
+</div>
+
+<section class="carte bloc-publier" aria-labelledby="titre-publier">
+  <h3 id="titre-publier">Partager un hobby</h3>
+  <app-publication-form />
+</section>
+
+<!-- Des boutons à bascule (aria-pressed), et non des liens : filtrer ne change
+     pas de page, cela change ce que la page montre. -->
+<div class="filtres" role="group" aria-label="Filtrer par catégorie">
+  <button type="button" class="filtre" [attr.aria-pressed]="categorie() === null" (click)="filtrer(null)">
+    Tout
+  </button>
+  @for (c of categories; track c.cle) {
+    <button
+      type="button"
+      class="filtre"
+      [style.--couleur-categorie]="c.couleur"
+      [attr.aria-pressed]="categorie() === c.cle"
+      (click)="filtrer(c.cle)">
+      <span aria-hidden="true">{{ c.emoji }}</span> {{ c.libelle }}
+    </button>
+  }
+</div>
+
+@if (publications().length > 0) {
+  <ul class="liste-publications">
+    @for (publication of publications(); track publication.id) {
+      <li><app-publication-carte [publication]="publication" /></li>
+    }
+  </ul>
+
+  <!-- « Voir plus » plutôt qu'un paginateur : un fil se lit en descendant, on
+       n'y saute pas « à la page 7 ». Le bouton disparaît quand le serveur n'a
+       plus de curseur à donner. -->
+  @if (aDesPlusAnciennes()) {
+    <div class="suite">
+      <p-button
+        label="Voir plus"
+        icon="pi pi-angle-down"
+        severity="secondary"
+        [outlined]="true"
+        [disabled]="chargement()"
+        (onClick)="voirPlus()" />
+    </div>
+  }
+} @else if (!chargement()) {
+  <!-- Le « vide » n'est affiché qu'une fois la réponse arrivée : pendant le
+       chargement, « aucune publication » serait faux. -->
+  <div class="carte vide">
+    @if (libelleFiltre(); as libelle) {
+      <p class="muet">Aucune publication dans « {{ libelle }} » pour l'instant.</p>
+    } @else {
+      <p class="muet">Le fil est vide. Soyez le premier à partager un hobby !</p>
+    }
+  </div>
+}

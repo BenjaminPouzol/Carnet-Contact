@@ -1,11 +1,16 @@
 package com.example.carnet_contact_backend.controller;
 
+import com.example.carnet_contact_backend.controller.Reactions.ReactionResume;
 import com.example.carnet_contact_backend.model.Message;
 import com.example.carnet_contact_backend.model.Reaction;
 import com.example.carnet_contact_backend.model.Utilisateur;
 import com.example.carnet_contact_backend.repository.MessageRepository;
 import com.example.carnet_contact_backend.repository.ReactionRepository;
 import com.example.carnet_contact_backend.repository.UtilisateurRepository;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -13,11 +18,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Messagerie interne : les comptes de l'application s'écrivent entre eux.
@@ -25,24 +27,6 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/messages")
 public class MessageController {
-
-    /**
-     * Les seules réactions acceptées.
-     *
-     * Pourquoi une liste fermée plutôt que « n'importe quel emoji » ? Deux
-     * raisons. D'abord la validation : « est-ce bien un emoji ? » est une
-     * question étonnamment difficile (séquences composées, modificateurs de
-     * teinte, drapeaux), alors que « est-ce dans cette liste ? » est trivial.
-     * Ensuite l'affichage : une barre de cinq boutons se dessine et se compte,
-     * là où un champ libre produirait autant de colonnes que d'emojis existants.
-     *
-     * Le serveur ne fait pas confiance au client sur ce point : la barre
-     * Angular propose ces cinq-là, mais rien n'empêche d'appeler l'API à la
-     * main avec autre chose.
-     */
-    public static final List<String> EMOJIS_AUTORISES = List.of("👍", "❤️", "😂", "😮", "😢");
-
-    private static final Set<String> EMOJIS_VALIDES = Set.copyOf(EMOJIS_AUTORISES);
 
     private final MessageRepository messageRepository;
     private final UtilisateurRepository utilisateurRepository;
@@ -57,19 +41,24 @@ public class MessageController {
         this.reactionRepository = reactionRepository;
     }
 
-    public record DemandeMessage(Long destinataireId, String contenu) {}
+    /**
+     * Le corps d'un envoi, avec ses règles.
+     *
+     * @Valid, sur le paramètre de `envoyer`, demande à Spring de vérifier ces
+     * annotations AVANT d'appeler la méthode. Un contenu vide, trop long ou un
+     * destinataire absent produisent un 400 sans qu'une ligne de ce contrôleur
+     * ne s'exécute. Auparavant, seul le contenu vide était testé à la main : un
+     * message de 2001 caractères atteignait la base et ressortait en erreur 500.
+     */
+    public record DemandeMessage(
+            @NotNull(message = "Destinataire requis.")
+            Long destinataireId,
+
+            @NotBlank(message = "Message vide.")
+            @Size(max = 2000, message = "Message trop long (2000 caractères au plus).")
+            String contenu) {}
 
     public record DemandeReaction(String emoji) {}
-
-    /**
-     * Les réactions d'un message, REGROUPÉES par emoji.
-     *
-     * Le client n'a pas besoin de la liste nominative : il affiche « 👍 3 ».
-     * En revanche il a besoin de `parMoi`, pour mettre en évidence le bouton
-     * sur lequel on a déjà cliqué — une information qui dépend de qui regarde,
-     * et que le serveur est donc le mieux placé pour calculer.
-     */
-    public record ReactionResume(String emoji, long nombre, boolean parMoi) {}
 
     /**
      * Ce qu'on renvoie pour un message.
@@ -77,11 +66,14 @@ public class MessageController {
      * Un DTO plutôt que l'entité : les réactions ne sont pas un champ de
      * `Message` (elles vivent dans leur propre table), et `parMoi` n'existe
      * nulle part en base — c'est une lecture relative au demandeur.
+     *
+     * Expéditeur et destinataire sont des AuteurPublic : le fil n'a besoin que
+     * d'un nom et d'une photo, pas de l'email ni du rôle de l'autre personne.
      */
     public record MessageVu(
             Long id,
-            Utilisateur expediteur,
-            Utilisateur destinataire,
+            AuteurPublic expediteur,
+            AuteurPublic destinataire,
             String contenu,
             Instant dateEnvoi,
             boolean lu,
@@ -98,48 +90,32 @@ public class MessageController {
      * Les réactions sont chargées en UNE requête pour tout le lot, puis
      * réparties en mémoire. Interroger la base une fois par message ferait
      * cinquante allers-retours pour un fil de cinquante messages — le
-     * classique problème « N+1 ».
+     * classique problème « N+1 ». Le regroupement lui-même est partagé avec les
+     * publications du fil (classe Reactions).
      */
     private List<MessageVu> assembler(List<Message> messages, Long moiId) {
         if (messages.isEmpty()) {
             return List.of();
         }
 
-        List<Reaction> reactions = reactionRepository.findByMessageIdIn(
-                messages.stream().map(Message::getId).toList());
+        Map<Long, List<ReactionResume>> reactions = Reactions.resumerParCible(
+                reactionRepository.findByMessageIdIn(messages.stream().map(Message::getId).toList()),
+                moiId);
 
         return messages.stream()
-                .map(message -> new MessageVu(
-                        message.getId(),
-                        message.getExpediteur(),
-                        message.getDestinataire(),
-                        message.getContenu(),
-                        message.getDateEnvoi(),
-                        message.isLu(),
-                        resumer(reactions, message.getId(), moiId)))
+                .map(message -> vue(message, reactions.getOrDefault(message.getId(), List.of())))
                 .toList();
     }
 
-    private List<ReactionResume> resumer(List<Reaction> toutes, Long messageId, Long moiId) {
-        // LinkedHashMap : conserve l'ordre d'insertion, donc l'ordre d'affichage
-        // reste stable d'un rafraîchissement à l'autre. Une HashMap ordinaire
-        // ferait sauter les emojis de place à chaque sondage.
-        Map<String, long[]> parEmoji = new LinkedHashMap<>();
-
-        toutes.stream()
-                .filter(r -> r.getMessage().getId().equals(messageId))
-                .sorted(Comparator.comparing(Reaction::getId))
-                .forEach(r -> {
-                    long[] compte = parEmoji.computeIfAbsent(r.getEmoji(), c -> new long[2]);
-                    compte[0]++;
-                    if (r.getUtilisateur().getId().equals(moiId)) {
-                        compte[1] = 1;
-                    }
-                });
-
-        return parEmoji.entrySet().stream()
-                .map(e -> new ReactionResume(e.getKey(), e.getValue()[0], e.getValue()[1] == 1))
-                .toList();
+    private MessageVu vue(Message message, List<ReactionResume> reactions) {
+        return new MessageVu(
+                message.getId(),
+                AuteurPublic.de(message.getExpediteur()),
+                AuteurPublic.de(message.getDestinataire()),
+                message.getContenu(),
+                message.getDateEnvoi(),
+                message.isLu(),
+                reactions);
     }
 
     /**
@@ -164,12 +140,8 @@ public class MessageController {
 
     @PostMapping
     public MessageVu envoyer(
-            @RequestBody DemandeMessage demande,
+            @Valid @RequestBody DemandeMessage demande,
             @AuthenticationPrincipal String email) {
-        if (demande.contenu() == null || demande.contenu().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Message vide.");
-        }
-
         Utilisateur expediteur = utilisateurConnecte(email);
         Utilisateur destinataire = utilisateurRepository.findById(demande.destinataireId())
                 .orElseThrow(() -> new ResponseStatusException(
@@ -184,12 +156,9 @@ public class MessageController {
         message.setDateEnvoi(Instant.now());
         message.setLu(false);
 
-        Message cree = messageRepository.save(message);
-
         // Un message neuf n'a évidemment aucune réaction : inutile d'aller le
         // demander à la base.
-        return new MessageVu(cree.getId(), expediteur, destinataire, cree.getContenu(),
-                cree.getDateEnvoi(), cree.isLu(), List.of());
+        return vue(messageRepository.save(message), List.of());
     }
 
     /** Tous les messages reçus non lus, pour la pastille du menu. */
@@ -219,7 +188,7 @@ public class MessageController {
             @RequestBody DemandeReaction demande,
             @AuthenticationPrincipal String email) {
 
-        if (demande.emoji() == null || !EMOJIS_VALIDES.contains(demande.emoji())) {
+        if (!Reactions.estAutorise(demande.emoji())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Emoji non autorisé.");
         }
 
@@ -273,6 +242,6 @@ public class MessageController {
     /** Les emojis que le client peut proposer. */
     @GetMapping("/emojis")
     public ResponseEntity<List<String>> emojis() {
-        return ResponseEntity.ok(EMOJIS_AUTORISES);
+        return ResponseEntity.ok(Reactions.EMOJIS_AUTORISES);
     }
 }

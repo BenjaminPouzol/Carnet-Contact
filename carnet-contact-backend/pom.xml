@@ -71,6 +71,14 @@
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
 
+		<!-- Bean Validation : des règles déclarées par annotations (@NotBlank,
+		     @Size, @Pattern) sur les objets de requête, vérifiées par Spring MVC
+		     dès qu'un paramètre porte @Valid. Un échec donne un 400. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+
 		<dependency>
 			<groupId>com.h2database</groupId>
 			<artifactId>h2</artifactId>

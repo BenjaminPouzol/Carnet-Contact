@@ -5,6 +5,8 @@ import com.example.carnet_contact_backend.model.Utilisateur;
 import com.example.carnet_contact_backend.repository.ContactRepository;
 import com.example.carnet_contact_backend.repository.JetonRafraichissementRepository;
 import com.example.carnet_contact_backend.repository.MessageRepository;
+import com.example.carnet_contact_backend.repository.PublicationRepository;
+import com.example.carnet_contact_backend.repository.ReactionPublicationRepository;
 import com.example.carnet_contact_backend.repository.ReactionRepository;
 import com.example.carnet_contact_backend.repository.UtilisateurRepository;
 import org.springframework.data.domain.Sort;
@@ -38,6 +40,8 @@ public class AdminController {
     private final ContactRepository contactRepository;
     private final MessageRepository messageRepository;
     private final ReactionRepository reactionRepository;
+    private final PublicationRepository publicationRepository;
+    private final ReactionPublicationRepository reactionPublicationRepository;
     private final JetonRafraichissementRepository jetonRepository;
 
     public AdminController(
@@ -45,11 +49,15 @@ public class AdminController {
             ContactRepository contactRepository,
             MessageRepository messageRepository,
             ReactionRepository reactionRepository,
+            PublicationRepository publicationRepository,
+            ReactionPublicationRepository reactionPublicationRepository,
             JetonRafraichissementRepository jetonRepository) {
         this.utilisateurRepository = utilisateurRepository;
         this.contactRepository = contactRepository;
         this.messageRepository = messageRepository;
         this.reactionRepository = reactionRepository;
+        this.publicationRepository = publicationRepository;
+        this.reactionPublicationRepository = reactionPublicationRepository;
         this.jetonRepository = jetonRepository;
     }
 
@@ -57,8 +65,8 @@ public class AdminController {
      * Une ligne du tableau d'administration.
      *
      * Un DTO plutôt que l'entité, parce qu'il porte des informations qui
-     * n'existent pas dans `Utilisateur` : le nombre de contacts et de messages,
-     * qui se comptent dans d'autres tables.
+     * n'existent pas dans `Utilisateur` : le nombre de contacts, de messages et
+     * de publications, qui se comptent dans d'autres tables.
      */
     public record LigneCompte(
             Long id,
@@ -70,6 +78,7 @@ public class AdminController {
             Instant dateInscription,
             long nombreContacts,
             long nombreMessages,
+            long nombrePublications,
             boolean estMoi) {}
 
     public record DemandeActif(boolean actif) {}
@@ -195,6 +204,13 @@ public class AdminController {
                     HttpStatus.BAD_REQUEST, "C'est le dernier administrateur actif.");
         }
 
+        // Le fil d'abord : les réactions de ce compte, puis celles des autres
+        // sur ses publications, puis ses publications elles-mêmes. Toujours la
+        // même règle — des feuilles vers la racine.
+        reactionPublicationRepository.supprimerCellesDe(cible.getId());
+        reactionPublicationRepository.supprimerCellesDesPublicationsDe(cible.getId());
+        publicationRepository.supprimerCellesDe(cible.getId());
+
         reactionRepository.supprimerCellesDe(cible.getId());
         reactionRepository.supprimerCellesDesMessagesDe(cible.getId());
         messageRepository.supprimerCeuxDe(cible.getId());
@@ -228,6 +244,7 @@ public class AdminController {
                 u.getRole(), u.isActif(), u.getDateInscription(),
                 contactRepository.countByProprietaireId(u.getId()),
                 messageRepository.countByExpediteurIdOrDestinataireId(u.getId(), u.getId()),
+                publicationRepository.countByAuteurId(u.getId()),
                 u.getId().equals(moi.getId()));
     }
 }

@@ -1,0 +1,64 @@
+.entete-fil p {
+  margin: -0.4rem 0 1rem;
+}
+
+.bloc-publier {
+  margin-bottom: 1.25rem;
+}
+
+.bloc-publier h3 {
+  margin-top: 0;
+}
+
+.filtres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.filtre {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--texte);
+  background: var(--carte);
+  border: 1.5px solid var(--bordure);
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.filtre:hover:not(:disabled) {
+  background: var(--bleu-pale);
+  box-shadow: none;
+}
+
+/* Filtre actif : plein, dans la couleur de sa categorie. « Tout » n'a pas de
+   variable : var() retombe alors sur sa valeur de secours, le bleu. */
+.filtre[aria-pressed="true"],
+.filtre[aria-pressed="true"]:hover:not(:disabled) {
+  color: #fff;
+  background: var(--couleur-categorie, var(--bleu));
+  border-color: var(--couleur-categorie, var(--bleu));
+}
+
+.liste-publications {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suite {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.25rem;
+}
+
+.vide {
+  text-align: center;
+}

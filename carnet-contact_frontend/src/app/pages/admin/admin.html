@@ -33,7 +33,7 @@
   sortField="dateInscription"
   [sortOrder]="1"
   styleClass="p-datatable-sm tableau-comptes"
-  [tableStyle]="{ 'min-width': '46rem' }">
+  [tableStyle]="{ 'min-width': '52rem' }">
 
   <ng-template pTemplate="header">
     <tr>
@@ -42,6 +42,7 @@
       <th pSortableColumn="actif">État <p-sortIcon field="actif" /></th>
       <th pSortableColumn="nombreContacts" class="colonne-nombre">Contacts <p-sortIcon field="nombreContacts" /></th>
       <th pSortableColumn="nombreMessages" class="colonne-nombre">Messages <p-sortIcon field="nombreMessages" /></th>
+      <th pSortableColumn="nombrePublications" class="colonne-nombre">Publications <p-sortIcon field="nombrePublications" /></th>
       <th pSortableColumn="dateInscription">Inscrit le <p-sortIcon field="dateInscription" /></th>
       <th class="colonne-actions">Actions</th>
     </tr>
@@ -86,6 +87,7 @@
 
       <td class="colonne-nombre">{{ compte.nombreContacts }}</td>
       <td class="colonne-nombre">{{ compte.nombreMessages }}</td>
+      <td class="colonne-nombre">{{ compte.nombrePublications }}</td>
       <td class="muet">{{ compte.dateInscription | date: 'dd/MM/yyyy' }}</td>
 
       <td class="colonne-actions">
@@ -130,7 +132,7 @@
 
   <ng-template pTemplate="emptymessage">
     <tr>
-      <td colspan="7" class="muet aucun">
+      <td colspan="8" class="muet aucun">
         Aucun compte ne correspond à ce filtre.
       </td>
     </tr>

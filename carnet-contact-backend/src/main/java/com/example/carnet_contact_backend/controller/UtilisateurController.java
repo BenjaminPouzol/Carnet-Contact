@@ -39,11 +39,17 @@ public class UtilisateurController {
      * plus se connecter n'aurait aucun sens. Leurs anciens messages restent
      * en revanche visibles dans les fils déjà ouverts : les désactiver coupe
      * l'accès, cela n'efface pas l'historique.
+     *
+     * AuteurPublic et non l'entité : choisir un interlocuteur demande un nom et
+     * une photo, pas l'email ni le rôle de tous les autres comptes.
      */
     @GetMapping
-    public List<Utilisateur> autres(@AuthenticationPrincipal String email) {
-        return utilisateurRepository.findByIdNotAndActifTrueOrderByNomAffichageAsc(
-                utilisateurConnecte(email).getId());
+    public List<AuteurPublic> autres(@AuthenticationPrincipal String email) {
+        return utilisateurRepository
+                .findByIdNotAndActifTrueOrderByNomAffichageAsc(utilisateurConnecte(email).getId())
+                .stream()
+                .map(AuteurPublic::de)
+                .toList();
     }
 
     /** Mise à jour du profil : nom affiché et photo. */

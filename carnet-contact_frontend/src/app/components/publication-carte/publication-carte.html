@@ -1,0 +1,109 @@
+<!-- --couleur-categorie : une variable CSS posée depuis le composant, comme
+     --couleur-reseau (section 20). Le CSS s'en sert pour le liseré et la
+     pastille, sans connaître aucune des onze couleurs. -->
+<article class="carte publication" [style.--couleur-categorie]="categorie().couleur">
+  <header class="entete-publication">
+    @if (publication().auteur.photoUrl) {
+      <img class="avatar" [src]="publication().auteur.photoUrl" alt="" />
+    } @else {
+      <span class="avatar avatar-lettre" aria-hidden="true">{{ initiale() }}</span>
+    }
+
+    <div class="auteur">
+      <strong>{{ publication().auteur.nomAffichage }}</strong>
+      <span class="muet date">
+        <!-- <time datetime> : la date lisible pour l'humain entre les balises,
+             la date exacte pour les machines dans l'attribut. -->
+        <time [attr.datetime]="publication().datePublication">
+          {{ publication().datePublication | date: 'dd/MM/yyyy, HH:mm' }}
+        </time>
+        @if (publication().dateModification) {
+          · modifiée
+        }
+      </span>
+    </div>
+
+    <span class="pastille-categorie">
+      <span aria-hidden="true">{{ categorie().emoji }}</span>
+      {{ categorie().libelle }}
+    </span>
+  </header>
+
+  @if (enModification()) {
+    <!-- Le même composant que pour publier : il sait pré-remplir et envoyer
+         un PUT dès qu'on lui passe une publication. -->
+    <app-publication-form
+      [publication]="publication()"
+      (termine)="finModification()"
+      (annuler)="finModification()" />
+  } @else {
+    <p class="contenu">{{ publication().contenu }}</p>
+
+    @if (publication().imageUrl; as url) {
+      <!-- loading="lazy" : une image hors de l'écran n'est téléchargée qu'à
+           l'approche. Sur un fil de photos, c'est la différence entre charger
+           dix images et en charger deux. -->
+      <img class="image" [src]="url" alt="" loading="lazy" />
+    }
+
+    <footer class="pied">
+      <div class="reactions">
+        <!-- Cliquer sur un compteur existant est le geste le plus courant
+             (« moi aussi ») : il envoie directement, sans ouvrir la palette. -->
+        @for (reaction of publication().reactions; track reaction.emoji) {
+          <button
+            type="button"
+            class="compteur-reaction"
+            [class.par-moi]="reaction.parMoi"
+            [attr.aria-pressed]="reaction.parMoi"
+            [title]="reaction.parMoi ? 'Retirer ma réaction' : 'Réagir ainsi'"
+            (click)="reagir(reaction.emoji)">
+            <span class="emoji">{{ reaction.emoji }}</span>
+            <span class="nombre">{{ reaction.nombre }}</span>
+          </button>
+        }
+
+        <button
+          type="button"
+          class="ouvrir-palette"
+          [attr.aria-expanded]="paletteOuverte()"
+          aria-label="Réagir à cette publication"
+          (click)="basculerPalette()">
+          <i class="pi pi-face-smile" aria-hidden="true"></i>
+        </button>
+
+        @if (paletteOuverte()) {
+          <div class="palette" role="group" aria-label="Choisir une réaction">
+            @for (emoji of emojis; track emoji) {
+              <button type="button" class="choix-emoji" (click)="reagir(emoji)">{{ emoji }}</button>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Les actions n'apparaissent que si le serveur les autorise. Ce n'est
+           pas une protection — l'API refuse d'elle-même (403) — mais on ne
+           montre pas une porte à qui n'a pas la clé. -->
+      @if (publication().modifiable || publication().supprimable) {
+        <div class="actions">
+          @if (confirmationOuverte()) {
+            <span class="question" role="alert">Supprimer cette publication ?</span>
+            <p-button label="Supprimer" severity="danger" size="small"
+              [disabled]="chargement()" (onClick)="confirmerSuppression()" />
+            <p-button label="Annuler" severity="secondary" size="small" [text]="true"
+              (onClick)="annulerSuppression()" />
+          } @else {
+            @if (publication().modifiable) {
+              <p-button icon="pi pi-pencil" label="Modifier" severity="secondary" size="small"
+                [text]="true" (onClick)="modifier()" />
+            }
+            @if (publication().supprimable) {
+              <p-button icon="pi pi-trash" label="Supprimer" severity="danger" size="small"
+                [text]="true" (onClick)="demanderSuppression()" />
+            }
+          }
+        </div>
+      }
+    </footer>
+  }
+</article>

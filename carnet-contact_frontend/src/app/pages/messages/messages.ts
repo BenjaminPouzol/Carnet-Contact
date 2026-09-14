@@ -4,8 +4,9 @@ import { DatePipe } from '@angular/common';
 import { AuthService } from '../../services/auth';
 import { MessageService } from '../../services/message';
 import { EtatHttpService } from '../../services/etat-http';
-import { Utilisateur } from '../../utilisateur.model';
-import { EMOJIS_REACTION, Message } from '../../message.model';
+import { AuteurPublic } from '../../utilisateur.model';
+import { Message } from '../../message.model';
+import { EMOJIS_REACTION } from '../../reaction.model';
 
 /** Un jour de conversation, avec les messages qu'il contient. */
 interface GroupeJour {
@@ -36,10 +37,10 @@ export class Messages implements OnInit, OnDestroy {
 
   // La liste des autres comptes. Chargée par ce composant, pas par un signal
   // partagé : elle ne sert qu'ici.
-  interlocuteurs = signal<Utilisateur[]>([]);
+  interlocuteurs = signal<AuteurPublic[]>([]);
 
   // Le destinataire sélectionné. null = aucun fil ouvert.
-  selection = signal<Utilisateur | null>(null);
+  selection = signal<AuteurPublic | null>(null);
 
   /**
    * L'id du message dont la palette de réaction est ouverte, ou null.
@@ -113,7 +114,7 @@ export class Messages implements OnInit, OnDestroy {
     this.messageService.arreterSuiviFil();
   }
 
-  ouvrir(utilisateur: Utilisateur): void {
+  ouvrir(utilisateur: AuteurPublic): void {
     this.selection.set(utilisateur);
     this.paletteOuverte.set(null);
     this.messageService.suivreFil(utilisateur.id);

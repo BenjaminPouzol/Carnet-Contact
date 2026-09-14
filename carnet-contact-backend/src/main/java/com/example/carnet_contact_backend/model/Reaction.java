@@ -23,6 +23,9 @@ import jakarta.persistence.UniqueConstraint;
  * de la règle « une réaction par personne et par message ». On pourrait se
  * contenter de la vérifier en Java ; la déclarer ici la rend impossible à
  * contourner, même par un bug ou deux requêtes simultanées.
+ *
+ * `implements ReactionEmoji` : le contrat partagé avec les réactions aux
+ * publications, qui permet de les regrouper avec le même code (Reactions).
  */
 @Entity
 @Table(
@@ -30,7 +33,7 @@ import jakarta.persistence.UniqueConstraint;
         uniqueConstraints = @UniqueConstraint(
                 name = "uk_reaction_message_utilisateur",
                 columnNames = {"message_id", "utilisateur_id"}))
-public class Reaction {
+public class Reaction implements ReactionEmoji {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -54,6 +57,7 @@ public class Reaction {
     @Column(nullable = false, length = 8)
     private String emoji;
 
+    @Override
     public Long getId() {
         return id;
     }
@@ -70,6 +74,7 @@ public class Reaction {
         this.message = message;
     }
 
+    @Override
     public Utilisateur getUtilisateur() {
         return utilisateur;
     }
@@ -78,11 +83,21 @@ public class Reaction {
         this.utilisateur = utilisateur;
     }
 
+    @Override
     public String getEmoji() {
         return emoji;
     }
 
     public void setEmoji(String emoji) {
         this.emoji = emoji;
+    }
+
+    /**
+     * Lire l'id d'une relation LAZY ne déclenche pas de requête : Hibernate le
+     * connaît déjà, c'est la valeur de la clé étrangère.
+     */
+    @Override
+    public Long idCible() {
+        return message.getId();
     }
 }

@@ -106,8 +106,8 @@ export class Admin implements OnInit {
     this.confirmation.confirm({
       header: 'Supprimer ce compte ?',
       message: `Le compte « ${compte.nomAffichage} » sera supprimé, ainsi que ses `
-        + `${compte.nombreContacts} contact(s) et ${compte.nombreMessages} message(s). `
-        + `Cette action est irréversible.`,
+        + `${compte.nombreContacts} contact(s), ${compte.nombreMessages} message(s) `
+        + `et ${compte.nombrePublications} publication(s). Cette action est irréversible.`,
       icon: 'pi pi-exclamation-triangle',
       acceptLabel: 'Supprimer',
       rejectLabel: 'Annuler',

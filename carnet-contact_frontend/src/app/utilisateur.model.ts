@@ -18,6 +18,19 @@ export interface Utilisateur {
 }
 
 /**
+ * Ce qu'un compte laisse voir de lui aux AUTRES : ni email, ni rôle, ni état.
+ *
+ * C'est la forme que renvoient désormais la liste des interlocuteurs, les
+ * messages et le fil d'actualité. Le compte complet (`Utilisateur`) ne sort
+ * plus que pour soi-même (`/api/utilisateurs/moi`) et pour l'administration.
+ */
+export interface AuteurPublic {
+  id: number;
+  nomAffichage: string;
+  photoUrl?: string | null;
+}
+
+/**
  * Une ligne du tableau d'administration : le compte, plus des compteurs qui
  * n'existent pas dans l'entité (ils se calculent dans d'autres tables).
  */
@@ -31,6 +44,7 @@ export interface LigneCompte {
   dateInscription?: string | null;
   nombreContacts: number;
   nombreMessages: number;
+  nombrePublications: number;
   // Calculé par le serveur : évite au client de comparer des identifiants
   // pour savoir quelles actions griser sur sa propre ligne.
   estMoi: boolean;

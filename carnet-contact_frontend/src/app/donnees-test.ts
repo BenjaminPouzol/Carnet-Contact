@@ -1,5 +1,7 @@
-import { Message, ReactionResume } from './message.model';
-import { Role, Utilisateur } from './utilisateur.model';
+import { Message } from './message.model';
+import { ReactionResume } from './reaction.model';
+import { AuteurPublic, Role, Utilisateur } from './utilisateur.model';
+import { Publication } from './publication.model';
 
 /**
  * Fabriques d'objets pour les tests.
@@ -30,11 +32,16 @@ export function unUtilisateur(modifications: Partial<Utilisateur> = {}): Utilisa
   };
 }
 
+/** Un compte tel que les AUTRES le voient : sans email ni rôle. */
+export function unAuteur(modifications: Partial<AuteurPublic> = {}): AuteurPublic {
+  return { id: 2, nomAffichage: 'Bob', photoUrl: null, ...modifications };
+}
+
 export function unMessage(modifications: Partial<Message> = {}): Message {
   return {
     id: 1,
-    expediteur: unUtilisateur({ id: 2, email: 'bob@exemple.fr', nomAffichage: 'Bob' }),
-    destinataire: unUtilisateur(),
+    expediteur: unAuteur({ id: 2, nomAffichage: 'Bob' }),
+    destinataire: unAuteur({ id: 1, nomAffichage: 'Alice' }),
     contenu: 'Salut',
     dateEnvoi: '2026-09-11T10:00:00Z',
     lu: false,
@@ -45,4 +52,20 @@ export function unMessage(modifications: Partial<Message> = {}): Message {
 
 export function uneReaction(modifications: Partial<ReactionResume> = {}): ReactionResume {
   return { emoji: '👍', nombre: 1, parMoi: false, ...modifications };
+}
+
+export function unePublication(modifications: Partial<Publication> = {}): Publication {
+  return {
+    id: 1,
+    auteur: unAuteur(),
+    categorie: 'SPORT',
+    contenu: 'Sortie vélo dimanche',
+    imageUrl: null,
+    datePublication: '2026-09-14T10:00:00Z',
+    dateModification: null,
+    reactions: [],
+    modifiable: false,
+    supprimable: false,
+    ...modifications
+  };
 }

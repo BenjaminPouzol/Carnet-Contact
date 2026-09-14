@@ -38,9 +38,12 @@ Document de référence détaillé, organisé par notion. Chaque section combine
 30. [PrimeNG, couches CSS et chargement différé](#30-primeng-couches-css-et-chargement-différé)
 31. [Mode sombre](#31-mode-sombre)
 32. [Réactions et accusés de lecture](#32-réactions-et-accusés-de-lecture)
-33. [Backend Spring Boot](#33-backend-spring-boot)
-34. [Git et GitHub](#34-git-et-github)
-35. [Pense-bête de dépannage](#35-pense-bête-de-dépannage)
+33. [Validation côté serveur (Bean Validation)](#33-validation-côté-serveur-bean-validation)
+34. [Pagination par curseur](#34-pagination-par-curseur)
+35. [Fil d'actualité : catégories, droits et DTO public](#35-fil-dactualité--catégories-droits-et-dto-public)
+36. [Backend Spring Boot](#36-backend-spring-boot)
+37. [Git et GitHub](#37-git-et-github)
+38. [Pense-bête de dépannage](#38-pense-bête-de-dépannage)
 
 ---
 
@@ -1686,7 +1689,7 @@ protected contactService = inject(ContactService);
 
 ### Pourquoi le POST met plus longtemps à signaler l'échec que le GET
 
-Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 33). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
+Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 36). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
 
 ## 16. Indicateur de chargement (`finalize`)
 
@@ -3689,7 +3692,7 @@ class MonServiceTest {
 }
 ```
 
-L'injection par constructeur, adoptée en section 33 pour d'autres raisons, se révèle ici un avantage inattendu : elle permet de fabriquer l'objet avec **les valeurs qu'on veut**, y compris des valeurs impossibles autrement.
+L'injection par constructeur, adoptée en section 36 pour d'autres raisons, se révèle ici un avantage inattendu : elle permet de fabriquer l'objet avec **les valeurs qu'on veut**, y compris des valeurs impossibles autrement.
 
 ```java
 // Durée négative : le jeton naît déjà périmé. Impossible à obtenir en
@@ -5617,7 +5620,634 @@ La palette d'emojis est placée **dans le flux**, et non en `position: absolute`
 
 ---
 
-## 33. Backend Spring Boot
+## 33. Validation côté serveur (Bean Validation)
+
+La section 27 a posé une règle : la validation du navigateur est un **confort**, celle du serveur une **sécurité**. Jusqu'ici, cette règle n'était appliquée qu'au mot de passe. Le reste de l'API faisait confiance au formulaire Angular — or n'importe qui peut appeler l'API directement, sans passer par aucun formulaire.
+
+La revue du projet en a trouvé deux conséquences concrètes dans la messagerie. Un message de 2001 caractères traversait le contrôleur, atteignait la base, qui le refusait (la colonne est limitée à 2000) : l'utilisateur recevait une **erreur 500**, « le serveur a planté ». Un message sans destinataire faisait échouer la recherche en base, même résultat. Dans les deux cas, le serveur n'était pas en panne : c'est la requête qui était mal formée, et la bonne réponse était un **400**.
+
+### Le problème : un `if` par champ, dans chaque contrôleur
+
+La façon naïve de valider ressemble à ceci :
+
+```java
+@PostMapping
+public Ressource creer(@RequestBody DemandeRessource demande) {
+    if (demande.titre() == null || demande.titre().isBlank()) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Titre requis.");
+    }
+    if (demande.titre().length() > 200) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Titre trop long.");
+    }
+    // ... un bloc par regle, par champ, dans chaque methode qui recoit ce corps.
+}
+```
+
+Ce code fonctionne, mais il a trois défauts. Il est **bavard** : la logique métier disparaît sous les vérifications. Il est **dispersé** : les règles d'une donnée sont écrites loin de la donnée, et recopiées dans chaque méthode qui la reçoit (création ET modification). Et surtout, il **s'oublie** : le jour où un champ est ajouté, rien n'oblige à écrire son `if`.
+
+### Déclarer plutôt que vérifier
+
+**Bean Validation** (le standard Jakarta Validation, implémenté par Hibernate Validator) renverse la démarche : on **déclare** les règles sur la donnée elle-même, sous forme d'annotations, et c'est Spring qui les vérifie avant d'appeler la méthode.
+
+```xml
+<!-- pom.xml -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-validation</artifactId>
+</dependency>
+```
+
+```java
+// Les regles vivent SUR la donnee, a un seul endroit, quelle que soit la
+// methode qui la recoit.
+public record DemandeRessource(
+        @NotNull(message = "Le type est obligatoire.")
+        TypeRessource type,
+
+        @NotBlank(message = "Le titre est obligatoire.")
+        @Size(max = 200, message = "Le titre depasse 200 caracteres.")
+        String titre,
+
+        // Facultatif : vide accepte, sinon une adresse http(s).
+        @Size(max = 500)
+        @Pattern(regexp = "^$|^https?://\\S+$", message = "Adresse http(s) attendue.")
+        String lien) {}
+
+@PostMapping
+public Ressource creer(@Valid @RequestBody DemandeRessource demande) {
+    // Si l'execution arrive ici, toutes les regles sont respectees : une
+    // violation a deja produit un 400 (MethodArgumentNotValidException).
+}
+```
+
+> **`@Valid` est indispensable.** Sans lui, les annotations du record ne sont que des étiquettes que personne ne lit : aucune erreur, aucun avertissement, et aucune validation. C'est l'oubli le plus fréquent — et le plus silencieux.
+
+| Annotation | Rôle |
+|---|---|
+| `@Valid` | Déclenche la vérification du paramètre qu'elle précède |
+| `@NotNull` | La valeur doit être présente (une chaîne vide passe) |
+| `@NotBlank` | Chaîne non nulle contenant au moins un caractère qui n'est pas un espace |
+| `@NotEmpty` | Non nul et non vide (chaîne, liste) — une chaîne d'espaces passe |
+| `@Size(min, max)` | Longueur d'une chaîne, ou taille d'une collection |
+| `@Pattern(regexp)` | La chaîne ENTIÈRE doit correspondre à l'expression régulière |
+| `@Min` / `@Max` | Bornes d'un nombre |
+| `@Email` | Forme d'une adresse email |
+
+### Trois nuances qui piègent
+
+**Une contrainte ignore `null`, sauf celles qui parlent de présence.** `@Size(max = 500)` et `@Pattern` laissent passer une valeur `null` : ce sont `@NotNull`, `@NotBlank` et `@NotEmpty` qui disent « obligatoire ». C'est précisément ce qui rend un champ facultatif — et c'est ce qui surprend quand on croit qu'un `@Size(min = 1)` suffit à exiger une valeur.
+
+**Un champ facultatif peut aussi arriver vide.** Un formulaire envoie `""` plutôt que `null` pour une case laissée blanche. Le motif `^$|…` accepte explicitement la chaîne vide, puis le contrôleur la ramène à `null` avant d'enregistrer : « pas d'image » ne s'écrit ainsi que d'une seule façon en base.
+
+**Une valeur d'énumération inconnue échoue avant la validation.** Pour `{"type": "PEINTURE"}`, Jackson ne sait pas fabriquer le record : l'erreur (`HttpMessageNotReadableException`) arrive avant même Bean Validation. Elle produit aussi un 400 — le résultat est le bon, mais le message n'est pas celui de l'annotation. Même chose pour un `@RequestParam` de type enum (`MethodArgumentTypeMismatchException`).
+
+> Un nombre obligatoire se déclare avec le type **enveloppe** (`Long`, `Integer`), jamais le primitif (`long`). Un `long` absent du JSON vaut `0` : il n'est jamais `null`, et `@NotNull` ne verrait rien.
+
+### Le miroir côté Angular
+
+Les règles existent désormais des deux côtés, pour deux raisons différentes : Angular les applique pendant la saisie (le bouton se désactive, le compteur rougit), le serveur les **impose**. Les deux listes doivent dire la même chose, sinon le formulaire accepte ce que l'API refuse.
+
+| Annotation serveur | Validateur Angular |
+|---|---|
+| `@NotNull` | `Validators.required` |
+| `@NotBlank` | `Validators.required` + `Validators.pattern(/\S/)` |
+| `@Size(max = n)` | `Validators.maxLength(n)` |
+| `@Pattern(regexp)` | `Validators.pattern(regex)` |
+
+`Validators.pattern` a une subtilité : donné sous forme de **chaîne**, le motif est encadré d'office par `^…$` (la valeur entière doit correspondre) ; donné sous forme d'**objet `RegExp`**, il est testé tel quel. `/\S/` signifie donc « contient au moins un caractère non blanc », exactement ce qu'il faut pour imiter `@NotBlank`.
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/PublicationController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/PublicationController.java)
+
+```java
+public record DemandePublication(
+        @NotNull(message = "La catégorie est obligatoire.")
+        Categorie categorie,
+
+        @NotBlank(message = "Le contenu est obligatoire.")
+        @Size(max = 2000, message = "Le contenu dépasse 2000 caractères.")
+        String contenu,
+
+        @Size(max = 500, message = "L'adresse de l'image dépasse 500 caractères.")
+        @Pattern(regexp = "^$|^https?://\\S+$", message = "L'image doit être une adresse http ou https.")
+        String imageUrl) {}
+
+@PostMapping
+public PublicationVue publier(
+        @Valid @RequestBody DemandePublication demande,
+        @AuthenticationPrincipal String email) { /* ... */ }
+```
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/MessageController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/MessageController.java) : le `if` manuel sur le contenu vide a disparu au profit des annotations, qui couvrent en plus les deux cas qui donnaient 500.
+
+```java
+public record DemandeMessage(
+        @NotNull(message = "Destinataire requis.")
+        Long destinataireId,
+
+        @NotBlank(message = "Message vide.")
+        @Size(max = 2000, message = "Message trop long (2000 caractères au plus).")
+        String contenu) {}
+```
+
+**Dans le projet** — [`carnet-contact_frontend/src/app/components/publication-form/publication-form.ts`](../carnet-contact_frontend/src/app/components/publication-form/publication-form.ts), le miroir Angular :
+
+```typescript
+formulaire = this.fb.group({
+  categorie: this.fb.control<Categorie | null>(null, Validators.required),
+  contenu: ['', [
+    Validators.required,
+    Validators.pattern(/\S/),                       // @NotBlank
+    Validators.maxLength(LONGUEUR_MAX_CONTENU)      // @Size(max = 2000)
+  ]],
+  imageUrl: ['', [Validators.maxLength(500), Validators.pattern(MOTIF_IMAGE)]]
+});
+```
+
+Les deux cas qui donnaient 500 sont couverts par `messageInvalide_renvoie400` dans [`MessageControllerTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/controller/MessageControllerTest.java), et les règles de publication par le test paramétré `publicationInvalide_renvoie400` de [`PublicationControllerTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/controller/PublicationControllerTest.java).
+
+---
+
+## 34. Pagination par curseur
+
+La section 22 découpe la liste des contacts en **pages numérotées** : « donne-moi la page 2, six par page ». C'est le bon outil pour une liste triée par nom, qui bouge peu pendant qu'on la consulte, et où l'on veut pouvoir sauter directement à la page 7.
+
+Un fil d'actualité est d'une autre nature. Il est trié du plus récent au plus ancien, et il **grandit par le haut pendant qu'on le lit** : quelqu'un publie, et tout ce qui était déjà là descend d'un cran. La pagination numérotée devient alors fausse, et elle l'est d'une façon particulièrement sournoise, parce que rien ne plante.
+
+### Le problème : une « page 2 » qui ne désigne plus les mêmes lignes
+
+Une page numérotée se traduit en SQL par un `OFFSET` : « saute les N premières lignes ». Or une position n'est pas une identité.
+
+```
+Fil trie du plus recent au plus ancien, 2 publications par page.
+
+1. Lecture de la page 1 :        [p5 p4] p3 p2 p1        -> on voit p5, p4
+
+2. Quelqu'un publie p6 :         p6 p5 p4 p3 p2 p1
+
+3. Lecture de la page 2          p6 p5 [p4 p3] p2 p1     -> on voit p4 (DEJA VU), p3
+   (OFFSET 2 = sauter les
+    deux premieres lignes)
+```
+
+Une insertion en tête fait réapparaître une publication déjà lue. Une suppression ferait l'inverse : une publication glisserait d'une page à la précédente pendant qu'on passe à la suivante, et ne serait jamais affichée.
+
+### Le curseur : « plus anciennes que celle-ci »
+
+L'idée est de ne plus demander une **position**, mais de repartir d'un **point de repère** : le client renvoie l'identifiant de la dernière publication reçue, et demande celles qui viennent après elle dans l'ordre du tri. Ce repère s'appelle un **curseur**.
+
+« Les publications plus anciennes que p4 » désigne toujours les mêmes lignes, que p6 existe ou non.
+
+```java
+// Le depot : AUCUNE notion de numero de page, seulement un point de depart.
+@Query("""
+        SELECT e FROM Evenement e
+        WHERE (:avant IS NULL OR e.id < :avant)   -- premiere tranche : pas de curseur
+        ORDER BY e.id DESC
+        """)
+List<Evenement> tranche(@Param("avant") Long avant, Pageable limite);
+```
+
+```java
+// La reponse porte le curseur a renvoyer pour la suite, ou null a la fin.
+public record Tranche<T>(List<T> elements, Long curseurSuivant) {}
+
+@GetMapping
+public Tranche<Evenement> lister(
+        @RequestParam(required = false) Long avant,
+        @RequestParam(defaultValue = "10") int taille) {
+
+    int n = Math.clamp(taille, 1, 30);
+
+    // n + 1 lignes : la derniere ne sera pas renvoyee. Elle sert seulement a
+    // savoir s'il reste quelque chose apres cette tranche — sans COUNT.
+    List<Evenement> lus = repository.tranche(avant, PageRequest.of(0, n + 1));
+
+    boolean reste = lus.size() > n;
+    List<Evenement> tranche = reste ? lus.subList(0, n) : lus;
+
+    return new Tranche<>(tranche, reste ? tranche.getLast().getId() : null);
+}
+```
+
+Trois détails de ce code ne sont pas négociables :
+
+- **Le tri porte sur une colonne unique et croissante.** L'`id` convient ; la date, non. Deux publications peuvent avoir la même date à la milliseconde, et « plus anciennes que 14 h 02 » ferait alors sauter ou répéter l'une des deux à la frontière de deux tranches.
+- **Le retour est une `List`, pas une `Page`.** Une `Page<T>` oblige Spring Data à exécuter une seconde requête `COUNT(*)` pour calculer le total. Un curseur n'affiche pas « page 2 sur 7 » : ce comptage serait payé pour rien. Le `Pageable` ne sert plus qu'à écrire le `LIMIT`.
+- **Lire une ligne de plus que demandé** est la manière la plus économe de savoir s'il reste une suite, et donc s'il faut afficher « Voir plus ».
+
+| | Pages numérotées (section 22) | Curseur |
+|---|---|---|
+| Aller directement à la page 7 | Oui | Non |
+| Afficher « page 2 sur 7 » | Oui, au prix d'un `COUNT` | Non |
+| Stable quand des lignes s'ajoutent en tête | Non : doublons ou oublis | Oui |
+| Coût SQL loin dans la liste | `OFFSET` relit puis jette les lignes sautées | `WHERE id < x` s'appuie sur l'index |
+| Après un ajout ou une suppression | Recharger la page (le découpage a bougé) | Insérer ou retirer dans la liste affichée |
+| Interface naturelle | Un paginateur | « Voir plus », défilement infini |
+
+La règle de choix tient à l'usage : **on consulte un annuaire, on parcourt un fil.** Le premier appelle des pages, le second un curseur.
+
+### Côté Angular : une demande qui porte ses paramètres
+
+Le service reprend le patron `Subject` + `switchMap` de la section 22, avec une différence : chaque demande **transporte** ce qu'elle veut (la catégorie, le curseur, et s'il s'agit d'une suite), au lieu que la requête aille relire les signaux au moment de partir.
+
+```typescript
+interface Demande {
+  suite: boolean;              // prolonger la liste, ou la remplacer ?
+  filtre: string | null;
+  avant: number | null;        // le curseur
+}
+
+private elementsSignal = signal<Element[]>([]);
+private curseurSignal = signal<number | null>(null);
+readonly aDesPlusAnciens = computed(() => this.curseurSignal() !== null);
+
+private demandes = new Subject<Demande>();
+
+constructor() {
+  this.demandes.pipe(
+    // UN seul tuyau pour « nouveau filtre » ET « voir plus » : la derniere
+    // demande annule celle qui etait en route.
+    switchMap(demande => this.http.get<Tranche>(this.url, { params: /* filtre, avant */ }).pipe(
+      map(tranche => ({ tranche, suite: demande.suite })),
+      catchError(() => EMPTY)
+    ))
+  ).subscribe(({ tranche, suite }) => {
+    this.elementsSignal.update(liste => suite ? [...liste, ...tranche.elements] : tranche.elements);
+    this.curseurSignal.set(tranche.curseurSuivant);
+  });
+}
+
+charger(filtre: string | null): void {
+  this.elementsSignal.set([]);
+  this.curseurSignal.set(null);
+  this.demandes.next({ suite: false, filtre, avant: null });
+}
+
+chargerPlus(filtre: string | null): void {
+  const avant = this.curseurSignal();
+  if (avant !== null) {
+    this.demandes.next({ suite: true, filtre, avant });
+  }
+}
+```
+
+Pourquoi un seul `Subject` pour deux gestes ? Parce qu'ils peuvent se chevaucher. L'utilisateur clique « Voir plus » sur le fil complet, puis, avant la réponse, choisit « Cuisine ». Avec deux tuyaux séparés, la suite du fil complet arriverait après coup et s'ajouterait **sous les publications « Cuisine »**. Avec un seul tuyau, `switchMap` annule la suite en route dès que le nouveau filtre part.
+
+| Élément | Rôle |
+|---|---|
+| `curseur` (signal) | L'identifiant à renvoyer pour la suite ; `null` quand tout est affiché |
+| `aDesPlusAnciens` (`computed`) | Afficher ou masquer « Voir plus » |
+| `suite` dans la demande | Remplacer la liste, ou la prolonger |
+| `switchMap` | Un changement de filtre annule un « Voir plus » en cours |
+
+### La conséquence : plus besoin de recharger
+
+Pour les contacts, un ajout ou une suppression oblige à **recharger** la page courante (section 22) : le découpage en pages appartient au serveur, et la moindre écriture le décale. Avec un curseur, rien ne se décale derrière ce qui est déjà chargé. Une publication neuve s'insère en tête de la liste affichée, une publication supprimée en est retirée — sans aucune requête de lecture.
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/PublicationRepository.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/PublicationRepository.java)
+
+```java
+@Query("""
+        SELECT p FROM Publication p
+        JOIN FETCH p.auteur
+        WHERE (:categorie IS NULL OR p.categorie = :categorie)
+          AND (:avant IS NULL OR p.id < :avant)
+        ORDER BY p.id DESC
+        """)
+List<Publication> fil(
+        @Param("categorie") Categorie categorie,
+        @Param("avant") Long avant,
+        Pageable limite);
+```
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/PublicationController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/PublicationController.java)
+
+```java
+List<Publication> lues = publicationRepository.fil(
+        categorie, avant, PageRequest.of(0, tailleBornee + 1));
+
+boolean resteDesPlusAnciennes = lues.size() > tailleBornee;
+List<Publication> tranche = resteDesPlusAnciennes ? lues.subList(0, tailleBornee) : lues;
+Long curseurSuivant = resteDesPlusAnciennes ? tranche.getLast().getId() : null;
+```
+
+**Dans le projet** — [`carnet-contact_frontend/src/app/services/publication.ts`](../carnet-contact_frontend/src/app/services/publication.ts)
+
+```typescript
+publier(demande: DemandePublication): Observable<Publication> {
+  return this.http.post<Publication>(this.apiUrl, demande, { /* ... */ }).pipe(
+    tap(publication => {
+      // Pas de rechargement : on insère en tête, si la publication entre
+      // dans le filtre affiché.
+      if (this.correspondAuFiltre(publication)) {
+        this.publicationsSignal.update(liste => [publication, ...liste]);
+      }
+    })
+  );
+}
+```
+
+Le défaut de la pagination numérotée est démontré par un test : `insertionEntreDeuxPages_neDecalePas` dans [`PublicationControllerTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/controller/PublicationControllerTest.java) publie entre deux lectures et vérifie que la seconde tranche ne répète rien. L'annulation par `switchMap` l'est côté Angular par « changer de catégorie annule un « Voir plus » encore en route », dans [`publication.spec.ts`](../carnet-contact_frontend/src/app/services/publication.spec.ts).
+
+---
+
+## 35. Fil d'actualité : catégories, droits et DTO public
+
+Le fil d'actualité assemble surtout des notions déjà vues : une entité et son contrôleur (section 36), des réactions (section 32), un rôle d'administrateur (section 29), un service à signaux (section 12). Cette section rassemble ce qu'il a apporté de **neuf** — des questions qui ne se posaient pas tant que toutes les données étaient privées.
+
+### Une liste fermée des deux côtés : enum Java et tableau `as const`
+
+Les catégories (Sport, Culture, Jeu vidéo…) sont fixées par l'application, pas par ses utilisateurs. Une **table** en base conviendrait à une liste que des administrateurs gèrent depuis un écran ; ici, elle demanderait une clé étrangère, une jointure à chaque lecture et un écran de gestion — pour une liste qui ne change qu'avec une nouvelle version du code. Une **énumération** suffit.
+
+```java
+// Stockee par son NOM (@Enumerated(STRING)), comme Role (section 29) :
+// inserer une valeur au milieu ne change pas celles deja enregistrees.
+public enum Genre { ROMAN, ESSAI, BD, AUTRE }
+
+@Enumerated(EnumType.STRING)
+@Column(nullable = false, length = 20)
+private Genre genre;
+```
+
+Côté Angular, la même liste existe, enrichie de ce qui ne regarde que l'affichage. Le patron est celui de `RESEAUX` (section 20) : un tableau figé, dont on **déduit** le type au lieu de l'écrire une seconde fois.
+
+```typescript
+export const GENRES = [
+  { cle: 'ROMAN', libelle: 'Roman', couleur: '#9333ea' },
+  { cle: 'ESSAI', libelle: 'Essai', couleur: '#0891b2' },
+  { cle: 'BD',    libelle: 'Bande dessinée', couleur: '#ea580c' },
+  { cle: 'AUTRE', libelle: 'Autre', couleur: '#64748b' }
+] as const;   // sans as const, `cle` serait un simple string
+
+// 'ROMAN' | 'ESSAI' | 'BD' | 'AUTRE', calcule depuis le tableau : ajouter une
+// ligne au tableau met le type a jour, impossible de les desynchroniser.
+export type Genre = typeof GENRES[number]['cle'];
+
+export function genreDe(cle: Genre) {
+  return GENRES.find(g => g.cle === cle)!;   // ! sur : le type garantit la presence
+}
+```
+
+Le partage des rôles est le même que pour les emojis de réaction : le serveur décide des valeurs **acceptées**, le client de leur **présentation** (libellé, emoji, couleur).
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Categorie.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Categorie.java) et [`carnet-contact_frontend/src/app/publication.model.ts`](../carnet-contact_frontend/src/app/publication.model.ts)
+
+```typescript
+export const CATEGORIES = [
+  { cle: 'SPORT', libelle: 'Sport', emoji: '⚽', couleur: '#16a34a' },
+  // ... dix autres
+  { cle: 'AUTRE', libelle: 'Autre', emoji: '💬', couleur: '#64748b' }
+] as const;
+
+export type Categorie = typeof CATEGORIES[number]['cle'];
+```
+
+### Liste noire, liste blanche : le DTO public
+
+Tant qu'un compte ne voyait que ses propres données, renvoyer l'entité `Utilisateur` telle quelle posait peu de problèmes. Dès que des comptes se voient **les uns les autres** — messagerie, puis fil d'actualité — la question change : que laisse-t-on voir d'un compte à un inconnu ?
+
+La revue du projet a montré que la réponse était « presque tout ». `@JsonIgnore` cachait le mot de passe, mais l'email, le rôle, l'état du compte et la date d'inscription partaient dans chaque message et dans la liste des interlocuteurs : n'importe quel compte connecté pouvait récolter toutes les adresses, et repérer les administrateurs.
+
+Le fond du problème est une question de méthode. `@JsonIgnore` raisonne en **liste noire** : tout est publié, sauf ce qu'on a pensé à cacher — y compris le champ qu'un développeur ajoutera l'an prochain sans penser à la sérialisation. Un **DTO** raisonne en **liste blanche** : rien n'est publié, sauf ce qui est écrit dedans.
+
+```java
+// Tout ce qu'un compte montre aux autres. Un champ ajoute a l'entite ne sort
+// pas d'ici tant que quelqu'un ne l'ajoute pas EXPRES a ce record.
+public record ProfilPublic(Long id, String nom, String photoUrl) {
+
+    public static ProfilPublic de(Compte compte) {
+        return new ProfilPublic(compte.getId(), compte.getNom(), compte.getPhotoUrl());
+    }
+}
+```
+
+| Approche | Ce qui sort par défaut | Risque |
+|---|---|---|
+| `@JsonIgnore` sur l'entité | Tout, sauf les champs annotés | Un champ sensible ajouté plus tard fuit silencieusement |
+| DTO dédié | Rien, sauf les champs du record | Un champ utile oublié manque — et se remarque tout de suite |
+
+La règle retenue : **l'entité elle-même ne sort que vers son propriétaire** (`/api/utilisateurs/moi`) et vers l'administration ; tout ce qui est montré à d'autres passe par un DTO.
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/AuteurPublic.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/AuteurPublic.java), utilisé par `MessageVu`, par `GET /api/utilisateurs` et par chaque publication du fil. Le test `expediteur_sansEmailNiRole` de [`MessageControllerTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/controller/MessageControllerTest.java) vérifie que l'email ne sort plus.
+
+```java
+public record AuteurPublic(Long id, String nomAffichage, String photoUrl) {
+
+    public static AuteurPublic de(Utilisateur utilisateur) {
+        return new AuteurPublic(
+                utilisateur.getId(), utilisateur.getNomAffichage(), utilisateur.getPhotoUrl());
+    }
+}
+```
+
+### Qui peut quoi, et ce que le serveur calcule pour le client
+
+| Action sur une publication | Son auteur | Un autre compte | Un administrateur |
+|---|---|---|---|
+| La lire, y réagir | Oui | Oui | Oui |
+| La modifier | Oui | Non (403) | **Non** (403) |
+| La supprimer | Oui | Non (403) | Oui |
+
+La ligne « modifier » mérite un mot : un administrateur **modère**, il ne **réécrit** pas. Retirer une publication problématique est son rôle ; mettre d'autres mots dans la bouche de quelqu'un ne l'est pas.
+
+Deux précautions encadrent ces règles :
+
+- Pour la suppression, le rôle est relu sur le compte **chargé depuis la base**, pas dans le jeton. Un compte rétrogradé garde un jeton « ADMIN » jusqu'à quinze minutes (section 29) : c'est tolérable pour lire, pas pour détruire.
+- Le client ne recalcule pas les droits. Chaque publication arrive avec `modifiable` et `supprimable`, calculés pour **celui qui regarde** — comme `estMoi` dans le tableau d'administration. Le gabarit se contente d'afficher ou non les boutons, et la règle n'existe qu'à un seul endroit.
+
+```java
+private boolean peutSupprimer(Publication p, Utilisateur moi) {
+    // `moi` vient de utilisateurRepository.findByEmail(...) : role lu en base.
+    return estAuteur(p, moi) || moi.getRole() == Role.ADMIN;
+}
+```
+
+### 403 ou 404 : ce que la réponse révèle
+
+Refuser l'accès à une ressource peut se dire de deux façons, et le choix n'est pas cosmétique : **le code de réponse est lui-même une information.**
+
+| Ressource | Refus | Pourquoi |
+|---|---|---|
+| Privée (un message, un contact) | 404 « introuvable » | Un 403 confirmerait que la ressource existe — c'est déjà une fuite |
+| Publique (une publication du fil) | 403 « interdit » | Tout le monde la voit déjà : un 404 serait un mensonge qui ne protège aucun secret |
+
+La même API applique donc les deux règles, selon la nature de la donnée. C'est cohérent, pas contradictoire.
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/PublicationController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/PublicationController.java), à comparer avec `messageAccessible` dans `MessageController.java`, qui répond 404.
+
+```java
+if (!estAuteur(publication, moi)) {
+    throw new ResponseStatusException(
+            HttpStatus.FORBIDDEN, "Seul l'auteur peut modifier cette publication.");
+}
+```
+
+### Charger l'auteur sans N+1 : `LAZY` et `JOIN FETCH`
+
+Chaque carte du fil affiche le nom et la photo de l'auteur. Avec un `@ManyToOne` laissé à son défaut (`EAGER`), Hibernate irait chercher chaque auteur par une requête séparée après avoir lu les publications : le problème N+1 de la section 32, déplacé sur une autre relation.
+
+La réponse est en deux temps : la relation est déclarée `LAZY` (rien n'est chargé d'office), puis la requête qui en a besoin **demande explicitement** la jointure.
+
+```java
+@ManyToOne(fetch = FetchType.LAZY, optional = false)
+private Compte auteur;
+```
+
+```java
+// JOIN FETCH : l'auteur arrive DANS la meme requete que les publications.
+@Query("SELECT p FROM Publication p JOIN FETCH p.auteur ORDER BY p.id DESC")
+List<Publication> recentes(Pageable limite);
+```
+
+> `JOIN FETCH` sur une relation vers **un** objet (`@ManyToOne`) se combine sans souci avec une limite. Sur une **collection** (`@OneToMany`), Hibernate ne peut plus limiter en SQL et découpe en mémoire, avec un avertissement : c'est une autre histoire.
+
+### Un code commun pour deux entités : une interface
+
+Les réactions aux publications vivent dans leur propre table (`ReactionPublication`), mais se regroupent exactement comme celles des messages. Plutôt que de recopier le regroupement, les deux entités implémentent une **interface** : un contrat qui dit ce qu'elles savent faire, sans rien imposer sur ce qu'elles sont.
+
+```java
+public interface AvecEmoji {
+    Long getId();
+    String getEmoji();
+    Compte getUtilisateur();
+    Long idCible();          // le message, ou la publication, reagi
+}
+
+public class ReactionMessage implements AvecEmoji { /* ... idCible() = message.getId() */ }
+public class ReactionArticle implements AvecEmoji { /* ... idCible() = article.getId() */ }
+
+// ? extends : accepte une List<ReactionMessage> COMME une List<ReactionArticle>.
+public static Map<Long, List<Resume>> resumer(List<? extends AvecEmoji> reactions, Long moiId) {
+    return reactions.stream()
+            .collect(Collectors.groupingBy(AvecEmoji::idCible))   // une seule passe
+            /* ... */;
+}
+```
+
+Le `? extends` n'est pas décoratif. Une `List<ReactionMessage>` n'est **pas** une `List<AvecEmoji>` pour le compilateur Java — sinon on pourrait y ranger une `ReactionArticle`. `List<? extends AvecEmoji>` dit « une liste de quelque chose qui respecte le contrat, que je ne ferai que lire », et accepte les deux.
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/ReactionEmoji.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/ReactionEmoji.java) et [`controller/Reactions.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/Reactions.java)
+
+```java
+public static Map<Long, List<ReactionResume>> resumerParCible(
+        List<? extends ReactionEmoji> reactions, Long moiId) {
+
+    Map<Long, List<ReactionEmoji>> parCible = reactions.stream()
+            .collect(Collectors.groupingBy(ReactionEmoji::idCible));
+    // ...
+}
+```
+
+### Suppressions en masse et contexte de persistance
+
+Supprimer une publication emporte ses réactions. La façon économe est une requête `@Modifying` : un seul `DELETE` en base, sans charger les réactions une par une.
+
+Ce raccourci a un revers, découvert par un test du fil. Hibernate garde en mémoire les objets déjà chargés pendant la transaction — le **contexte de persistance**. Un `DELETE` en masse passe **à côté** de ce contexte : la ligne disparaît de la base, mais l'objet reste en mémoire, bien vivant aux yeux d'Hibernate. S'il pointe vers une publication qu'on supprime ensuite, l'écriture suivante échoue avec `TransientPropertyValueException`.
+
+```java
+// flushAutomatically : ecrire ce qui est en attente AVANT le DELETE.
+// clearAutomatically : vider le contexte APRES, pour qu'aucun objet perime ne
+// survive en memoire.
+@Modifying(flushAutomatically = true, clearAutomatically = true)
+@Query("DELETE FROM Reaction r WHERE r.cible.id = :id")
+void supprimerCellesDe(@Param("id") Long id);
+```
+
+En production, chaque requête HTTP ouvre son propre contexte : le cas ne se présentait pas encore. Dans un test `@Transactional`, toutes les requêtes du test **partagent** le même contexte, et le piège s'est refermé tout de suite — c'est exactement le genre de défaut latent qu'un test met au jour avant qu'un changement anodin ne le déclenche en production.
+
+Le même test enseigne une seconde précaution : dans un test `@Transactional`, le commit n'arrive jamais, donc les clés étrangères ne sont vérifiées qu'au moment d'une écriture réelle. Un `entityManager.flush()` force cette écriture ; un `entityManager.clear()` oblige ensuite à relire depuis la base plutôt que depuis la mémoire.
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/ReactionPublicationRepository.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/ReactionPublicationRepository.java), et `supprimer_emporteLesReactions` dans [`PublicationControllerTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/controller/PublicationControllerTest.java)
+
+```java
+entityManager.flush();
+entityManager.clear();
+
+assertThat(publicationRepository.findById(id)).isEmpty();
+assertThat(reactionRepository.count()).isZero();
+```
+
+### Côté Angular : un seul formulaire pour créer et modifier
+
+Le formulaire de publication sert aussi, tel quel, à modifier une publication depuis sa carte. Il reçoit la publication à modifier par un `input()` **facultatif**, et quatre détails le rendent correct.
+
+```typescript
+publication = input<Article | null>(null);   // null : creation
+termine = output<Article>();
+
+ngOnInit(): void {
+  // ngOnInit, pas le constructeur : les input() n'y sont pas encore recus.
+  // Pas d'effect() non plus : la valeur est deja la, elle n'arrive pas plus tard.
+  const existant = this.publication();
+  if (existant) {
+    this.formulaire.setValue({ titre: existant.titre, texte: existant.texte });
+  }
+}
+
+onSubmit(): void {
+  const appel = this.publication()
+    ? this.service.modifier(this.publication()!.id, this.formulaire.getRawValue())
+    : this.service.publier(this.formulaire.getRawValue());
+
+  appel.subscribe({
+    // Le formulaire ne se vide QU'EN CAS DE SUCCES : c'est pour cela que le
+    // service renvoie l'Observable au lieu de s'abonner lui-meme.
+    next: article => { this.formulaire.reset(); this.termine.emit(article); },
+    // Vide mais indispensable : sans callback error, l'echec remonterait
+    // « non gere ». La saisie, elle, reste en place.
+    error: () => {}
+  });
+}
+```
+
+| Détail | Pourquoi |
+|---|---|
+| `publier()` renvoie l'Observable | L'appelant doit savoir si l'envoi a **échoué**, pour ne pas vider la saisie (le défaut relevé sur le formulaire de contact) |
+| `error: () => {}` | L'intercepteur affiche déjà la bannière ; ce callback évite l'erreur « non gérée » |
+| Un `id` numéroté par instance (`let prochainNumero = 1` au niveau du module) | Plusieurs formulaires coexistent sur la page ; deux `id="contenu"` casseraient les `<label for>` |
+| `<option [ngValue]="null">` | `value` convertirait `null` en chaîne `"null"` ; `[ngValue]` transmet la valeur telle quelle |
+
+**Dans le projet** — [`carnet-contact_frontend/src/app/components/publication-form/publication-form.ts`](../carnet-contact_frontend/src/app/components/publication-form/publication-form.ts), réutilisé dans [`components/publication-carte/publication-carte.html`](../carnet-contact_frontend/src/app/components/publication-carte/publication-carte.html) :
+
+```html
+@if (enModification()) {
+  <app-publication-form
+    [publication]="publication()"
+    (termine)="finModification()"
+    (annuler)="finModification()" />
+}
+```
+
+### Côté CSS : une couleur par catégorie, lisible dans les deux thèmes
+
+Chaque carte porte la couleur de sa catégorie, sans que la feuille de style connaisse une seule de ces onze couleurs : le composant pose une variable CSS (le procédé de la section 20), et le CSS la **mélange** au fond de carte.
+
+```html
+<article class="carte" [style.--couleur-categorie]="categorie().couleur">
+```
+
+```css
+.pastille {
+  /* 16 % de la couleur, 84 % du fond de carte. Comme --carte change avec le
+     theme, la pastille reste pale en clair ET sombre en sombre. Une couleur
+     pale ecrite en dur resterait claire sur fond noir (section 31). */
+  background: color-mix(in srgb, var(--couleur-categorie) 16%, var(--carte));
+}
+
+.filtre[aria-pressed="true"] {
+  /* Second argument de var() : la valeur de secours quand la variable n'est
+     pas definie — ici pour le filtre « Tout », qui n'a pas de categorie. */
+  background: var(--couleur-categorie, var(--bleu));
+}
+```
+
+La suppression, enfin, se confirme **dans la carte** (« Supprimer cette publication ? » suivi de deux boutons) plutôt que par `p-confirmDialog`. Le paquet initial pesait 926 kB pour une alerte de budget à 1 MB (section 30) : la boîte de dialogue de l'administration vit dans un morceau chargé à part, l'importer dans le fil l'aurait ramenée dans le paquet principal. Après ajout du fil, le paquet initial pèse 951 kB.
+
+**Dans le projet** — [`carnet-contact_frontend/src/app/components/publication-carte/publication-carte.css`](../carnet-contact_frontend/src/app/components/publication-carte/publication-carte.css) et [`pages/fil/fil.css`](../carnet-contact_frontend/src/app/pages/fil/fil.css)
+
+---
+
+## 36. Backend Spring Boot
 
 Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
 
@@ -5761,7 +6391,7 @@ Le principe est exactement le même que l'injection de dépendances vue côté A
 
 ---
 
-## 34. Git et GitHub
+## 37. Git et GitHub
 
 Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
 
@@ -5818,7 +6448,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 
 ---
 
-## 35. Pense-bête de dépannage
+## 38. Pense-bête de dépannage
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
@@ -5842,12 +6472,12 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Une liste ne se met pas à jour après un ajout ou une suppression faits par un autre composant | Chaque composant possède sa propre copie de la donnée dans un signal local | Déplacer la donnée dans le service (signal partagé, voir section 12) plutôt que de recharger la page |
 | Le formulaire d'édition reste vide alors que la fiche s'affiche bien | Formulaire pré-rempli à la construction, avant l'arrivée des données du signal partagé | Pré-remplir dans un `effect()` qui réagit au signal, pas dans le `constructor` directement (section 14) |
 | Le formulaire d'édition efface la saisie en cours de temps en temps | Un `effect()` de pré-remplissage se réexécute à chaque changement du signal (ex : rechargement de la liste) | Ajouter un drapeau booléen : ne `patchValue()` qu'une seule fois |
-| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 33) ; regarder la ligne `preflight` dans l'onglet Réseau |
+| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 36) ; regarder la ligne `preflight` dans l'onglet Réseau |
 | Modification enregistrée côté serveur mais la fiche affiche encore l'ancienne valeur | Le signal partagé n'a pas été mis à jour après le `PUT` | Dans le service, `.update()` avec `.map()` pour remplacer l'élément modifié par la réponse du serveur |
 | `NG0203` / `inject() must be called from an injection context` sur un `effect()` | `effect()` appelé hors constructeur / hors champ de classe | Le déplacer dans le `constructor` du composant |
 | Backend éteint ou en erreur : liste vide, formulaire sans réaction, aucun message | `.subscribe()` n'a qu'un callback de succès, l'erreur du flux n'est traitée nulle part | `.pipe(catchError(...))` dans le service + un signal d'erreur affiché (section 15) |
 | `catchError` provoque `Type 'void' is not assignable to type 'ObservableInput<...>'` | Le callback de `catchError` ne retourne pas d'Observable | Retourner `of(valeurDeRepli)`, `EMPTY`, ou `throwError(() => err)` |
-| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 33) |
+| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 36) |
 | Une modification du code (nouveau signal, `delay()` ajouté...) reste sans effet dans le navigateur | Le rechargement à chaud de `ng serve` n'a pas pris (fréquent sous Windows / avec le SSR) | `Ctrl + C` sur `ng serve`, `npm start`, attendre `bundle generation complete`, puis `Ctrl + Shift + R` dans le navigateur |
 | L'indicateur de chargement ne s'affiche jamais au rafraîchissement de la page | Le `GET` initial part côté serveur (SSR) : `chargement` passe à `true` puis `false` avant l'envoi du HTML | Normal ; l'indicateur n'apparaît que sur les requêtes déclenchées par un clic (ajout, modif, suppression), section 16 |
 | L'indicateur de chargement reste allumé après une erreur réseau | `set(false)` placé seulement dans `.subscribe(next)`, qui ne s'exécute pas en cas d'erreur | Le mettre dans `finalize()` du `.pipe()`, qui s'exécute quelle que soit l'issue (section 16) |
@@ -5931,3 +6561,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Une variable de thème rend mal dans un seul endroit de l'interface | Elle répond en réalité à deux questions différentes (lisible sur le fond / portant du texte blanc) | Lui donner sa propre variable, déclarée une fois par thème (section 31) |
 | Le dégradé de fond se décale ou se dilue au défilement | Il est ancré au document et non à la fenêtre | `background-attachment: fixed` (section 31) |
 | Un `data-theme` posé à la main dans `index.html` reste sans effet | Le script anti-FOUC puis `ThemeService` recalculent et écrasent l'attribut | C'est le comportement voulu : passer par `localStorage`, la préférence système, ou la bascule de l'interface (section 31) |
+| Erreur 500 `Valeur trop longue pour la colonne "CONTENU CHARACTER VARYING(2000)"` | Aucune validation serveur : la donnée trop longue atteint la base, qui la refuse | Déclarer `@Size(max = 2000)` sur le champ du record et `@Valid` sur le paramètre : 400 avant d'entrer dans la méthode (section 33) |
+| Les annotations `@NotBlank` / `@Size` d'un record semblent ignorées | `@Valid` manque devant le `@RequestBody` (ou `spring-boot-starter-validation` n'est pas dans le `pom.xml`) | Ajouter `@Valid` au paramètre et la dépendance de validation (section 33) |
+| `TransientPropertyValueException … references an unsaved transient instance` au `flush` d'un test | Une requête `@Modifying` (DELETE en masse) a supprimé des lignes dont les objets restent chargés dans le contexte de persistance : Hibernate les croit vivants | `@Modifying(flushAutomatically = true, clearAutomatically = true)` sur la requête (section 35) |
+| Une suppression qui viole une clé étrangère passe pourtant dans un test | Test `@Transactional` : le commit n'arrive jamais, les contraintes ne sont vérifiées qu'à l'écriture réelle | `entityManager.flush()` après l'action, puis `entityManager.clear()` avant de relire (section 35) |

@@ -1,0 +1,43 @@
+.formulaire-publication {
+  display: grid;
+  gap: 0.85rem;
+}
+
+/* Une categorie tient en quelques mots : un menu pleine largeur ferait croire
+   a un champ de saisie libre. */
+.champ-categorie {
+  max-width: 20rem;
+}
+
+textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.compteur {
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  text-align: right;
+  color: var(--texte-doux);
+  font-variant-numeric: tabular-nums;
+}
+
+.compteur.depasse {
+  font-weight: 600;
+  color: var(--rouge-fonce);
+}
+
+.apercu {
+  display: block;
+  max-width: 100%;
+  max-height: 12rem;
+  margin-top: 0.5rem;
+  border-radius: var(--rayon-petit);
+  object-fit: cover;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

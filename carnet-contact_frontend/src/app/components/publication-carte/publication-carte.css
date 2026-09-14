@@ -1,0 +1,176 @@
+:host {
+  display: block;
+}
+
+/* Le liseré gauche porte la couleur de la categorie : le fil se lit d'un coup
+   d'oeil, sans lire les etiquettes. */
+.publication {
+  display: grid;
+  gap: 0.75rem;
+  border-left: 4px solid var(--couleur-categorie);
+}
+
+.entete-publication {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar-lettre {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--bleu), var(--rouge));
+}
+
+.auteur {
+  display: grid;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.date {
+  font-size: 0.8rem;
+}
+
+/* color-mix : la teinte de la categorie melangee au fond de carte. Le melange
+   se fait avec var(--carte), donc il s'adapte seul au mode sombre — une couleur
+   pale ecrite en dur resterait claire sur fond noir. */
+.pastille-categorie {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--texte);
+  background: color-mix(in srgb, var(--couleur-categorie) 16%, var(--carte));
+  border: 1px solid color-mix(in srgb, var(--couleur-categorie) 45%, var(--carte));
+  border-radius: 999px;
+}
+
+.contenu {
+  margin: 0;
+  /* Respecte les retours a la ligne saisis, et coupe une URL trop longue. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  max-height: 24rem;
+  border-radius: var(--rayon-petit);
+  object-fit: cover;
+}
+
+.pied {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.compteur-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--texte-doux);
+  background: var(--carte);
+  border: 1px solid var(--bordure);
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.compteur-reaction:hover:not(:disabled) {
+  background: var(--bulle-recue);
+  box-shadow: none;
+}
+
+/* Sa propre reaction est cerclee de bleu, comme dans la messagerie. */
+.compteur-reaction.par-moi {
+  color: var(--bleu-fonce);
+  background: var(--bleu-pale);
+  border-color: var(--bleu);
+}
+
+.compteur-reaction .nombre {
+  font-variant-numeric: tabular-nums;
+}
+
+.ouvrir-palette {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  color: var(--texte-doux);
+  background: transparent;
+  border-radius: 50%;
+  box-shadow: none;
+}
+
+.ouvrir-palette:hover:not(:disabled) {
+  background: var(--bulle-recue);
+  box-shadow: none;
+}
+
+.palette {
+  display: flex;
+  gap: 0.1rem;
+  padding: 0.2rem;
+  background: var(--carte);
+  border: 1px solid var(--bordure);
+  border-radius: 999px;
+  box-shadow: var(--ombre);
+}
+
+.choix-emoji {
+  padding: 0.15rem 0.3rem;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  background: transparent;
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.choix-emoji:hover:not(:disabled) {
+  background: var(--bulle-recue);
+  box-shadow: none;
+  transform: scale(1.2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.question {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--rouge-fonce);
+}

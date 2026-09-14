@@ -1,22 +1,12 @@
-import { Utilisateur } from './utilisateur.model';
-
-/**
- * Les réactions d'un message, REGROUPÉES par emoji.
- *
- * Le serveur envoie « 👍 3, dont la mienne » plutôt que la liste nominative :
- * c'est tout ce que l'affichage demande, et `parMoi` dépend de qui regarde —
- * une information que seul le serveur peut calculer.
- */
-export interface ReactionResume {
-  emoji: string;
-  nombre: number;
-  parMoi: boolean;
-}
+import { AuteurPublic } from './utilisateur.model';
+import { ReactionResume } from './reaction.model';
 
 export interface Message {
   id: number;
-  expediteur: Utilisateur;
-  destinataire: Utilisateur;
+  // AuteurPublic et non Utilisateur : le serveur n'envoie plus l'email ni le
+  // rôle de l'autre personne, seulement de quoi afficher son nom et sa photo.
+  expediteur: AuteurPublic;
+  destinataire: AuteurPublic;
   contenu: string;
   // Le backend sérialise un Instant Java en chaîne ISO 8601
   // ("2026-09-10T14:25:45.990Z") : côté TypeScript c'est un string, qu'on
@@ -26,12 +16,3 @@ export interface Message {
   lu: boolean;
   reactions: ReactionResume[];
 }
-
-/**
- * Les emojis proposés par la barre de réaction.
- *
- * La même liste existe côté serveur, qui refuse tout ce qui n'y figure pas :
- * celle-ci décide de ce qu'on AFFICHE, celle du serveur de ce qu'on ACCEPTE.
- * Même partage des rôles que pour la politique de mot de passe (section 27).
- */
-export const EMOJIS_REACTION = ['👍', '❤️', '😂', '😮', '😢'] as const;

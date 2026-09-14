@@ -2,8 +2,12 @@ package com.example.carnet_contact_backend.controller;
 
 import com.example.carnet_contact_backend.model.Role;
 import com.example.carnet_contact_backend.model.Utilisateur;
+import com.example.carnet_contact_backend.repository.PublicationRepository;
+import com.example.carnet_contact_backend.repository.ReactionPublicationRepository;
 import com.example.carnet_contact_backend.repository.UtilisateurRepository;
 import com.example.carnet_contact_backend.security.JwtService;
+import com.jayway.jsonpath.JsonPath;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,7 +46,16 @@ class AdminControllerTest {
     private UtilisateurRepository utilisateurRepository;
 
     @Autowired
+    private PublicationRepository publicationRepository;
+
+    @Autowired
+    private ReactionPublicationRepository reactionPublicationRepository;
+
+    @Autowired
     private JwtService jwtService;
+
+    @Autowired
+    private EntityManager entityManager;
 
     private Utilisateur patron;
     private Utilisateur simple;
@@ -71,6 +84,24 @@ class AdminControllerTest {
 
     private Utilisateur relire(Long id) {
         return utilisateurRepository.findById(id).orElseThrow();
+    }
+
+    private Long publier(String jeton, String contenu) throws Exception {
+        String corps = mockMvc.perform(post("/api/publications")
+                        .header("Authorization", "Bearer " + jeton)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categorie\":\"AUTRE\",\"contenu\":\"%s\"}".formatted(contenu)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(corps, "$.id")).longValue();
+    }
+
+    private void reagir(String jeton, Long publicationId) throws Exception {
+        mockMvc.perform(put("/api/publications/" + publicationId + "/reaction")
+                        .header("Authorization", "Bearer " + jeton)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"emoji\":\"👍\"}"))
+                .andExpect(status().isOk());
     }
 
     // --- Accès --------------------------------------------------------------
@@ -271,6 +302,38 @@ class AdminControllerTest {
                 .andExpect(status().isNoContent());
 
         assertThat(utilisateurRepository.findById(simple.getId())).isEmpty();
+    }
+
+    /**
+     * Trois sortes de lignes pointent vers un compte depuis le fil : ses
+     * publications, les réactions des AUTRES sur ses publications, et SES
+     * réactions sur les publications des autres. Oublier l'une des trois, et la
+     * clé étrangère bloque la suppression.
+     */
+    @Test
+    @DisplayName("Supprimer un compte emporte ses publications et les réactions qui s'y rattachent")
+    void supprimerUnCompte_emporteSesPublications() throws Exception {
+        Long publicationSimple = publier(jetonSimple, "Ma sortie");
+        Long publicationPatron = publier(jetonPatron, "Mon voyage");
+        reagir(jetonPatron, publicationSimple);
+        reagir(jetonSimple, publicationPatron);
+
+        mockMvc.perform(get("/api/admin/comptes")
+                        .header("Authorization", "Bearer " + jetonPatron))
+                .andExpect(jsonPath("$[?(@.email == 'simple@exemple.fr')].nombrePublications").value(1));
+
+        mockMvc.perform(delete("/api/admin/comptes/" + simple.getId())
+                        .header("Authorization", "Bearer " + jetonPatron))
+                .andExpect(status().isNoContent());
+
+        // Écriture forcée : c'est au flush que les clés étrangères sont vérifiées,
+        // et dans un test @Transactional le commit n'arrive jamais.
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(publicationRepository.findById(publicationSimple)).isEmpty();
+        assertThat(publicationRepository.findById(publicationPatron)).isPresent();
+        assertThat(reactionPublicationRepository.count()).isZero();
     }
 
     @Test

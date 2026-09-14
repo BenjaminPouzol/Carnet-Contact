@@ -236,4 +236,57 @@ class MessageControllerTest {
                         .content("{\"emoji\":\"🦆\"}"))
                 .andExpect(status().isBadRequest());
     }
+
+    // --- Confidentialité et validation --------------------------------------
+
+    /**
+     * Un message est lu par son destinataire : il n'a pas à recevoir au passage
+     * l'email et le rôle de l'expéditeur. Seul le nom et la photo sont utiles
+     * pour afficher le fil.
+     */
+    @Test
+    @DisplayName("L'expéditeur d'un message n'expose ni son email ni son rôle")
+    void expediteur_sansEmailNiRole() throws Exception {
+        envoyer(jetonAlice, bob.getId(), "Bonjour");
+
+        mockMvc.perform(get("/api/messages/" + alice.getId())
+                        .header("Authorization", "Bearer " + jetonBob))
+                .andExpect(jsonPath("$[0].expediteur.nomAffichage").value("alice@exemple.fr"))
+                .andExpect(jsonPath("$[0].expediteur.email").doesNotExist())
+                .andExpect(jsonPath("$[0].expediteur.role").doesNotExist())
+                .andExpect(jsonPath("$[0].destinataire.email").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("La liste des interlocuteurs n'expose pas les emails")
+    void listeDesComptes_sansEmail() throws Exception {
+        mockMvc.perform(get("/api/utilisateurs")
+                        .header("Authorization", "Bearer " + jetonAlice))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].nomAffichage").exists())
+                .andExpect(jsonPath("$[*].email").isEmpty());
+    }
+
+    /**
+     * Avant Bean Validation, ces deux requêtes n'étaient arrêtées par rien : le
+     * message trop long atteignait la base, qui le refusait en erreur 500, et
+     * l'identifiant absent faisait échouer la recherche du destinataire.
+     */
+    @Test
+    @DisplayName("Un message trop long ou sans destinataire est refusé (400)")
+    void messageInvalide_renvoie400() throws Exception {
+        mockMvc.perform(post("/api/messages")
+                        .header("Authorization", "Bearer " + jetonAlice)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"destinataireId\":%d,\"contenu\":\"%s\"}"
+                                .formatted(bob.getId(), "a".repeat(2001))))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/messages")
+                        .header("Authorization", "Bearer " + jetonAlice)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"contenu\":\"Bonjour\"}"))
+                .andExpect(status().isBadRequest());
+    }
 }

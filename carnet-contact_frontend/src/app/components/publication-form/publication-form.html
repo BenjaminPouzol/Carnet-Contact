@@ -1,0 +1,51 @@
+<form class="formulaire-publication" [formGroup]="formulaire" (ngSubmit)="onSubmit()">
+  <div class="champ-categorie">
+    <label [for]="'categorie-' + numero">Catégorie</label>
+    <!-- [ngValue] plutôt que value : il transmet la valeur telle quelle, null
+         compris. value la convertirait en chaîne « null ». -->
+    <select [id]="'categorie-' + numero" formControlName="categorie">
+      <option [ngValue]="null" disabled>Choisir une catégorie…</option>
+      @for (categorie of categories; track categorie.cle) {
+        <option [ngValue]="categorie.cle">{{ categorie.emoji }} {{ categorie.libelle }}</option>
+      }
+    </select>
+  </div>
+
+  <div>
+    <label [for]="'contenu-' + numero">Votre publication</label>
+    <textarea
+      [id]="'contenu-' + numero"
+      formControlName="contenu"
+      rows="4"
+      placeholder="Une sortie, une découverte, un projet en cours…"></textarea>
+    <!-- Le compteur prévient AVANT le refus : on voit la limite approcher. -->
+    <p class="compteur" [class.depasse]="longueurContenu() > longueurMax">
+      {{ longueurContenu() }} / {{ longueurMax }}
+    </p>
+  </div>
+
+  <div>
+    <label [for]="'image-' + numero">Image (adresse, facultative)</label>
+    <input
+      [id]="'image-' + numero"
+      formControlName="imageUrl"
+      placeholder="https://exemple.fr/photo.jpg" />
+    @if (formulaire.controls.imageUrl.invalid && formulaire.controls.imageUrl.touched) {
+      <p class="erreur-champ">L'adresse doit commencer par http:// ou https://.</p>
+    }
+    @if (apercuImage(); as url) {
+      <img class="apercu" [src]="url" alt="Aperçu de l'image" />
+    }
+  </div>
+
+  <div class="actions">
+    @if (publication()) {
+      <p-button label="Annuler" severity="secondary" [text]="true" (onClick)="annuler.emit()" />
+    }
+    <p-button
+      type="submit"
+      [icon]="publication() ? 'pi pi-check' : 'pi pi-send'"
+      [label]="publication() ? 'Enregistrer' : 'Publier'"
+      [disabled]="formulaire.invalid || chargement()" />
+  </div>
+</form>

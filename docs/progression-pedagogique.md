@@ -733,6 +733,156 @@ PrimeNG n'impose aucune couleur »** en section 30, et deux sous-sections en
 section 31 (variable partagée devenue inadaptée aux deux thèmes, dégradé de fond
 fixe). 4 entrées ajoutées au pense-bête.
 
+### Partie 14 — Revue du projet, fil d'actualité et correctifs liés
+Trois demandes formulées ensemble : une revue du projet, la refonte du cours
+Angular avec des schémas, et un fil d'actualité où chaque compte publie ses
+hobbies, rangés par catégorie (sport, culture, jeu vidéo, informatique,
+actualité, autre — avec la liberté d'en ajouter d'autres).
+
+Méthode : la demande a d'abord été découpée en trois chantiers indépendants. La
+revue a été livrée tout de suite, en lecture seule. Quatre questions ont ensuite
+été posées, parce que chacune changeait ce qui serait construit :
+- Rythme : **livraison complète** (troisième fois, après les Parties 9 et 10)
+- Interactions : **réactions emoji**, sur le modèle de la messagerie
+- Défauts de la revue : **corriger ceux dont le fil dépend**, lister les autres
+- Schémas du cours : **Mermaid**
+
+La conception a été validée avant la moindre ligne de code, écrite dans
+`docs/superpowers/specs/2026-09-14-fil-actualite-design.md`, puis découpée en
+dix tâches dans `docs/superpowers/plans/2026-09-14-fil-actualite.md`. Chaque
+tâche de code a suivi le même cycle : test écrit, échec constaté, code, test au
+vert. La refonte du cours est traitée ensuite, pour que sa dernière étape puisse
+citer le code réel du fil.
+
+#### La revue
+110. Constats principaux : le cours Angular s'arrêtait à l'étape 10 alors que
+     son sommaire en annonce 26 ; le README était obsolète et sa mise en forme
+     Markdown cassée ; le sondage du fil de messages marque les messages comme
+     lus même onglet caché — accusés de lecture faux, et notification perdue
+     dans environ cinq cas sur six ; la saisie est perdue en cas d'échec dans le
+     formulaire de contact et la page d'édition ; la validation serveur se
+     limitait au mot de passe (un message de 2001 caractères donnait une erreur
+     500) ; l'entité `Utilisateur` exposait l'email et le rôle de tous les
+     comptes à tout compte connecté ; emails non normalisés ; N+1 dans le
+     tableau d'administration ; `utilisateurConnecte()` recopiée dans chaque
+     contrôleur
+111. Seuls la confidentialité et la validation serveur ont été traitées : le fil
+     en dépendait directement. Les autres constats rejoignent les pistes
+     suivantes
+
+#### Backend
+112. **Bean Validation** : `@NotNull`, `@NotBlank`, `@Size`, `@Pattern` sur les
+     records de requête, déclenchés par `@Valid`. La dépendance n'était pas dans
+     le dépôt Maven local : téléchargement réseau autorisé une fois. Appliquée
+     aussi aux messages, où les deux cas qui donnaient 500 donnent désormais 400
+113. **DTO `AuteurPublic`** : raisonner en liste blanche plutôt qu'en liste noire
+     (`@JsonIgnore`). Il remplace l'entité dans `MessageVu`, dans
+     `GET /api/utilisateurs` et dans chaque publication
+114. **Onze catégories** dans une enum stockée par nom. Les cinq ajoutées ont été
+     choisies pour ne pas chevaucher les six demandées : Musique (pratiquée,
+     distincte de Culture), Cuisine, Voyage, Nature & plein air, Créations
+     (DIY, dessin, photo)
+115. `Publication` et `ReactionPublication` : une table dédiée pour les réactions
+     plutôt qu'une table unique à deux clés étrangères facultatives, dont la
+     contrainte d'unicité serait devenue fragile
+116. Code partagé : interface `ReactionEmoji` implémentée par les deux entités,
+     et classe `Reactions` (liste des emojis, regroupement en une passe par
+     `groupingBy`). `MessageController` a perdu sa copie — et au passage son
+     filtrage de toute la liste pour chaque message
+117. **Pagination par curseur** (`?avant=<id>`) : tri par id décroissant, lecture
+     de `taille + 1` lignes pour savoir s'il reste une suite, `List` plutôt que
+     `Page` pour éviter le `COUNT`. Justifiée par un test qui publie entre deux
+     lectures et vérifie l'absence de doublon
+118. **Droits** : l'administrateur supprime mais ne modifie pas ; rôle relu en
+     base pour la suppression ; **403** pour une ressource publique, là où la
+     messagerie répond 404 pour une ressource privée ; drapeaux `modifiable` et
+     `supprimable` calculés par le serveur pour celui qui regarde
+119. Auteur en `LAZY`, ramené par `JOIN FETCH` dans la requête du fil : une seule
+     requête par tranche
+120. Administration : la suppression d'un compte emporte ses publications, les
+     réactions des autres sur celles-ci et ses propres réactions ;
+     `nombrePublications` dans le tableau et dans la confirmation
+
+**Incident à retenir.** Un test de suppression a échoué sur
+`TransientPropertyValueException`. Diagnostic : la requête `@Modifying`
+supprime en base sans prévenir le contexte de persistance, où la réaction créée
+plus tôt dans le test restait chargée. Latent en production (une requête HTTP =
+un contexte), immédiat dans un test `@Transactional`. Corrigé à la source par
+`@Modifying(flushAutomatically = true, clearAutomatically = true)`, appliqué
+aussi aux trois suppressions de l'administration avant que leur test ne le
+réclame. Même occasion d'apprendre `flush()` + `clear()` dans les tests, sans
+lesquels une clé étrangère violée passerait inaperçue.
+
+#### Frontend
+121. `reaction.model.ts` extrait de `message.model.ts` ; `AuteurPublic` côté
+     TypeScript ; fabriques `unAuteur` et `unePublication`
+122. `PublicationService` : un seul `Subject` + `switchMap` pour « nouveau
+     filtre » et « Voir plus », chaque demande portant ses propres paramètres —
+     un changement de catégorie annule une suite encore en route. Ajout et
+     suppression mis à jour localement, sans rechargement
+123. `publier()` et `modifier()` renvoient l'Observable : le formulaire ne se
+     vide qu'en cas de succès. La leçon de la revue est appliquée au code neuf ;
+     le formulaire de contact, lui, reste à corriger
+124. `publication-form` sert à la création et à la modification : `input()`
+     facultatif lu dans `ngOnInit`, validateurs miroirs du serveur
+     (`Validators.pattern(/\S/)` pour `@NotBlank`), `id` numérotés par instance,
+     `[ngValue]` pour l'option vide
+125. `publication-carte` : variable CSS `--couleur-categorie` et `color-mix()`,
+     qui suivent le mode sombre ; confirmation de suppression dans la carte
+     plutôt que `p-confirmDialog`, pour ne pas tirer la boîte de dialogue dans
+     le paquet initial
+126. Page `fil` : pastilles de filtre `aria-pressed`, bouton « Voir plus », états
+     vides selon le filtre ; route `/fil` chargée avec le reste (page fréquente),
+     lien « Fil » dans la navigation
+
+#### Vérifications faites
+- Backend : 91 tests au vert (63 → 91 : 24 sur les publications, 3 sur la
+  messagerie, 1 sur l'administration). Frontend : 88 tests au vert (70 → 88 :
+  11 sur le service, 7 sur le formulaire)
+- `ng build` sans avertissement ; paquet initial de 926 à 951 kB, sous l'alerte
+  de 1 MB
+- Parcours au `curl` contre le vrai serveur sur le port 8124 (vérifié libre
+  avant, arrêté après) : curseur renvoyé, filtre, trois refus en 400, 403 pour
+  une modification par un non-auteur, réaction comptée, 204 pour une suppression
+  par l'administratrice, aucun email dans la liste des comptes, 400 pour un
+  message trop long
+- Non vérifié : le rendu réel du fil dans un navigateur (formulaire, pastilles,
+  cartes, mode sombre). La carte et la page n'ont pas de test de gabarit
+
+Notions ajoutées au support : **section 33 « Validation côté serveur (Bean
+Validation) »**, **section 34 « Pagination par curseur »**, **section 35 « Fil
+d'actualité : catégories, droits et DTO public »**. 4 entrées ajoutées au
+pense-bête. Sections Backend/Git/Pense-bête renumérotées 36/37/38, renvois
+corrigés — y compris le lien du cours Angular.
+
+#### Le cours Angular refondu
+127. Constat de départ : le sommaire annonçait 26 étapes, seules les 10
+     premières étaient rédigées. La refonte a été menée **après** le fil, pour
+     que sa dernière étape cite le code réel, avec son propre plan
+     (`docs/superpowers/plans/2026-09-14-cours-angular-refonte.md`)
+128. Étapes 1 à 10 conservées telles quelles, enrichies de schémas. Étapes 11 à
+     26 rédigées dans le même format : le problème, la notion, la syntaxe
+     générique, « Dans le projet » avec des blocs **[ÉTAPE]** extraits de
+     l'historique Git (commit cité) et **[DÉFINITIF]** / **[REMPLACÉ]**, un
+     tableau récapitulatif, le renvoi au support. Une **Partie VI** et une
+     **étape 27** sur le fil d'actualité, des bilans de partie et un bilan du
+     parcours
+129. **50 schémas Mermaid** : organigrammes (qui appelle qui), diagrammes de
+     séquence (dans quel ordre), un diagramme d'états (le sondage) et un schéma
+     entités-relations (les réactions). Une note en tête du cours explique
+     comment les lire et qu'il faut l'extension « Markdown Preview Mermaid
+     Support » pour les voir dans VS Code
+130. Le fil conducteur rendu explicite dans le bilan final : une notion arrive
+     maladroitement, casse ou alourdit ce qui marchait, puis trouve sa place
+     (étapes 9-10, 13-15, 19, 27)
+
+Vérifications du cours : blocs de code équilibrés, et toutes les ancres
+internes ainsi que tous les renvois vers le support résolus par un script. Il a
+trouvé une seule ancre cassée, antérieure à la refonte (étape 7 dans le
+sommaire), corrigée. Non vérifié : le rendu visuel des schémas, faute de moteur
+Mermaid disponible hors ligne — à contrôler sur GitHub ou dans VS Code avec
+l'extension.
+
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
@@ -749,6 +899,18 @@ fixe). 4 entrées ajoutées au pense-bête.
 - Accessibilité et navigation au clavier, examinées seulement au cas par cas
   (la bascule du mot de passe, l'ordre de lecture des bulles) — jamais en revue
   d'ensemble
+- Défauts relevés par la revue de la Partie 14 et non traités :
+  - Suspendre le sondage du fil de messages quand l'onglet est caché
+    (`document.hidden`) : aujourd'hui il marque les messages comme lus sans
+    qu'on les regarde, et la notification ne part presque jamais
+  - Ne vider le formulaire de contact et ne quitter la page d'édition qu'après
+    la réponse du serveur (le patron de `PublicationService.publier()`)
+  - Valider les contacts côté serveur (Bean Validation, section 33)
+  - Normaliser les emails (minuscules) à l'inscription et à la connexion
+  - Supprimer le N+1 du tableau d'administration (trois `COUNT` par compte)
+  - Factoriser `utilisateurConnecte()`, recopiée dans cinq contrôleurs
+  - Paginer le fil de messages, retéléchargé en entier toutes les 5 s
+- Tests de gabarit pour la carte de publication et la page du fil
 
 ## Comment poursuivre cette philosophie
 
