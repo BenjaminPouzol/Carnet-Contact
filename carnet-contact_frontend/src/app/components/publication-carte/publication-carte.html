@@ -10,7 +10,11 @@
     }
 
     <div class="auteur">
-      <strong>{{ publication().auteur.nomAffichage }}</strong>
+      <!-- Un lien, et non un bouton : il MÈNE à une autre page (la page de la
+           personne), il doit pouvoir s'ouvrir dans un nouvel onglet. -->
+      <a class="lien-auteur" [routerLink]="['/personne', publication().auteur.id]">
+        <strong>{{ publication().auteur.nomAffichage }}</strong>
+      </a>
       <span class="muet date">
         <!-- <time datetime> : la date lisible pour l'humain entre les balises,
              la date exacte pour les machines dans l'attribut. -->
@@ -27,6 +31,11 @@
       <span aria-hidden="true">{{ categorie().emoji }}</span>
       {{ categorie().libelle }}
     </span>
+
+    <!-- Suivre l'auteur sans quitter le fil. L'étiquette de catégorie est poussée
+         à droite (margin-left: auto) : le bouton se range juste après elle.
+         Sur ses propres publications, le bouton se masque de lui-même. -->
+    <app-bouton-suivre [compteId]="publication().auteur.id" />
   </header>
 
   @if (enModification()) {

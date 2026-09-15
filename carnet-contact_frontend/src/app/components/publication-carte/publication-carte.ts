@@ -1,20 +1,25 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { PublicationService } from '../../services/publication';
 import { EtatHttpService } from '../../services/etat-http';
 import { Publication, categorieDe } from '../../publication.model';
 import { EMOJIS_REACTION } from '../../reaction.model';
 import { PublicationForm } from '../publication-form/publication-form';
+import { BoutonSuivre } from '../bouton-suivre/bouton-suivre';
 
 /**
  * Une publication du fil : son auteur, sa catégorie, son contenu, ses
  * réactions — et, selon les droits calculés par le serveur, les actions
  * « Modifier » et « Supprimer ».
+ *
+ * Depuis les abonnements, la carte est aussi un point de DÉCOUVERTE : le nom de
+ * l'auteur mène à sa page, et un bouton permet de le suivre sans quitter le fil.
  */
 @Component({
   selector: 'app-publication-carte',
-  imports: [DatePipe, ButtonModule, PublicationForm],
+  imports: [DatePipe, RouterLink, ButtonModule, PublicationForm, BoutonSuivre],
   templateUrl: './publication-carte.html',
   styleUrl: './publication-carte.css'
 })
