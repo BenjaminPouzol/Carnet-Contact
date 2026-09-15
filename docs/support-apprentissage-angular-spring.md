@@ -41,9 +41,10 @@ Document de référence détaillé, organisé par notion. Chaque section combine
 33. [Validation côté serveur (Bean Validation)](#33-validation-côté-serveur-bean-validation)
 34. [Pagination par curseur](#34-pagination-par-curseur)
 35. [Fil d'actualité : catégories, droits et DTO public](#35-fil-dactualité--catégories-droits-et-dto-public)
-36. [Backend Spring Boot](#36-backend-spring-boot)
-37. [Git et GitHub](#37-git-et-github)
-38. [Pense-bête de dépannage](#38-pense-bête-de-dépannage)
+36. [Envoi de fichiers](#36-envoi-de-fichiers)
+37. [Backend Spring Boot](#37-backend-spring-boot)
+38. [Git et GitHub](#38-git-et-github)
+39. [Pense-bête de dépannage](#39-pense-bête-de-dépannage)
 
 ---
 
@@ -1689,7 +1690,7 @@ protected contactService = inject(ContactService);
 
 ### Pourquoi le POST met plus longtemps à signaler l'échec que le GET
 
-Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 36). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
+Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 37). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
 
 ## 16. Indicateur de chargement (`finalize`)
 
@@ -3692,7 +3693,7 @@ class MonServiceTest {
 }
 ```
 
-L'injection par constructeur, adoptée en section 36 pour d'autres raisons, se révèle ici un avantage inattendu : elle permet de fabriquer l'objet avec **les valeurs qu'on veut**, y compris des valeurs impossibles autrement.
+L'injection par constructeur, adoptée en section 37 pour d'autres raisons, se révèle ici un avantage inattendu : elle permet de fabriquer l'objet avec **les valeurs qu'on veut**, y compris des valeurs impossibles autrement.
 
 ```java
 // Durée négative : le jeton naît déjà périmé. Impossible à obtenir en
@@ -5953,7 +5954,7 @@ Le défaut de la pagination numérotée est démontré par un test : `insertionE
 
 ## 35. Fil d'actualité : catégories, droits et DTO public
 
-Le fil d'actualité assemble surtout des notions déjà vues : une entité et son contrôleur (section 36), des réactions (section 32), un rôle d'administrateur (section 29), un service à signaux (section 12). Cette section rassemble ce qu'il a apporté de **neuf** — des questions qui ne se posaient pas tant que toutes les données étaient privées.
+Le fil d'actualité assemble surtout des notions déjà vues : une entité et son contrôleur (section 37), des réactions (section 32), un rôle d'administrateur (section 29), un service à signaux (section 12). Cette section rassemble ce qu'il a apporté de **neuf** — des questions qui ne se posaient pas tant que toutes les données étaient privées.
 
 ### Une liste fermée des deux côtés : enum Java et tableau `as const`
 
@@ -6247,7 +6248,431 @@ La suppression, enfin, se confirme **dans la carte** (« Supprimer cette publica
 
 ---
 
-## 36. Backend Spring Boot
+## 36. Envoi de fichiers
+
+Jusqu'ici, une image n'entrait dans l'application que par son **adresse** : l'utilisateur la collait, le serveur la rangeait comme n'importe quel texte. Envoyer le fichier lui-même change la nature de l'échange — des octets bruts au lieu de JSON — et soulève des questions qui ne se posaient pas : où ranger ces octets, comment savoir ce qu'ils contiennent vraiment, comment les montrer à une balise `<img>` qui ne sait pas s'authentifier, et quand s'en débarrasser.
+
+Le choix structurant tient en une phrase : **une image envoyée devient une adresse comme une autre**. Une route dédiée reçoit le fichier et renvoie son URL ; le formulaire range cette URL dans le champ qui existait déjà. Le reste de l'application n'a rien à apprendre.
+
+| Approche envisagée | Verdict |
+|---|---|
+| Route dédiée qui renvoie une URL | **Retenue** : aucun contrat d'API existant ne change, et l'aperçu s'affiche avant l'enregistrement |
+| Fichier joint à chaque formulaire (profil, contact, publication) | Cinq routes à passer en multipart, et pas d'aperçu tant que le formulaire n'est pas envoyé |
+| Image encodée en base64 dans le champ texte | Une photo de 5 Mo devient 6,7 Mo de texte, recopiés dans chaque liste JSON qui la contient |
+
+### Le format multipart et `MultipartFile`
+
+Le JSON ne transporte que du texte. Pour envoyer un fichier, le navigateur utilise un autre format de corps, **`multipart/form-data`** : le corps est découpé en *parties*, séparées par une **frontière** (une chaîne aléatoire annoncée dans l'en-tête `Content-Type`). Chaque partie a ses propres en-têtes — son nom, le nom du fichier, son type — puis son contenu brut. C'est exactement ce qu'envoie un formulaire HTML classique contenant un `<input type="file">`.
+
+Côté Spring, on n'a pas à découper ce corps soi-même : chaque partie fichier arrive sous la forme d'un `MultipartFile`, désigné par son nom.
+
+```java
+// consumes : la route n'accepte QUE le format d'envoi de fichiers.
+@PostMapping(value = "/api/pieces-jointes", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+public ResponseEntity<Reponse> envoyer(
+        // "fichier" : le NOM de la partie, choisi par le client dans son FormData.
+        @RequestParam("fichier") MultipartFile fichier) throws IOException {
+
+    if (fichier.isEmpty()) {                  // partie presente, mais zero octet
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+    }
+
+    byte[] octets = fichier.getBytes();       // tout le contenu, en memoire
+
+    // fichier.getOriginalFilename() et fichier.getContentType() existent aussi,
+    // mais c'est le CLIENT qui les a ecrits : a ne pas croire (voir plus bas).
+    ...
+}
+```
+
+Spring limite la taille reçue, et ses valeurs par défaut sont basses : **1 Mo par fichier**, de quoi refuser la plupart des photos prises au téléphone.
+
+```properties
+spring.servlet.multipart.max-file-size=5MB
+# La requete entiere : le fichier plus l'enveloppe multipart qui l'entoure.
+spring.servlet.multipart.max-request-size=6MB
+```
+
+| Situation | Réponse |
+|---|---|
+| Partie absente (mauvais nom côté client) | 400, avant même d'entrer dans la méthode |
+| Fichier au-delà de `max-file-size` | 413 *Payload Too Large*, avant d'entrer dans la méthode |
+| Contenu qui n'est pas du type attendu | 415 *Unsupported Media Type*, à lever soi-même |
+| Corps envoyé en JSON sur une route `consumes = multipart` | 415 |
+
+> Vérifié contre le vrai serveur : un fichier de 5,5 Mo **et** un fichier de 20 Mo reçoivent tous deux un 413 propre, sans coupure de connexion.
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/ImageController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/ImageController.java). Les limites sont dans `application.properties` — et **aussi** dans `src/test/resources/application.properties`, qui remplace le premier pendant les tests au lieu de le compléter (section 26).
+
+```java
+@PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+public ResponseEntity<ImageEnvoyee> envoyer(
+        @RequestParam("fichier") MultipartFile fichier,
+        @AuthenticationPrincipal String email) throws IOException {
+    Utilisateur moi = utilisateurConnecte(email);
+
+    if (fichier.isEmpty()) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le fichier est vide.");
+    }
+
+    byte[] donnees = fichier.getBytes();
+    String type = FormatImage.typeDe(donnees)
+            .orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Formats acceptés : JPEG, PNG, WebP, GIF."));
+    // ...
+}
+```
+
+### Stocker des octets : `@Lob` et un identifiant qui ne se devine pas
+
+Deux endroits sont possibles pour ranger un fichier : dans la base, ou sur le disque avec seulement son nom en base. Le bon choix dépend du cycle de vie des données. Ici la base H2 est **en mémoire** : elle disparaît à chaque redémarrage. Des fichiers sur disque lui survivraient, orphelins, pointés par des données qui n'existent plus. En base, tout disparaît ensemble.
+
+Un contenu volumineux demande une colonne adaptée : **`@Lob`** (*Large OBject*) indique à JPA d'utiliser un BLOB. Sans lui, un `byte[]` deviendrait une colonne de taille modeste, trop petite pour une photo.
+
+L'identifiant, lui, n'est pas un compteur. On verra plus bas que ces fichiers se lisent **sans jeton** : leur identifiant est alors leur seule protection. `/api/pieces-jointes/42` inviterait à essayer 43 ; un UUID aléatoire ne se devine pas.
+
+```java
+@Entity
+public class PieceJointe {
+
+    // UUID tire au sort par Hibernate a l'insertion : 122 bits de hasard.
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(length = 36)
+    private String id;
+
+    // @Lob : colonne BLOB, pour un contenu volumineux.
+    @Lob
+    @Column(nullable = false)
+    private byte[] donnees;
+
+    // Deduit du contenu par le serveur, jamais recopie de la requete.
+    @Column(nullable = false, length = 50)
+    private String typeContenu;
+}
+```
+
+| Stockage | Adapté quand… |
+|---|---|
+| En base (`@Lob`) | Fichiers peu nombreux, et base qui suit le même cycle de vie que les données (ici : H2 en mémoire) |
+| Sur disque, nom en base | Fichiers nombreux ou lourds, base persistante — il faut alors gérer sauvegardes et fichiers orphelins |
+| Service de stockage externe | Production à grande échelle, fichiers servis par un réseau de diffusion |
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Image.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Image.java)
+
+```java
+@Id
+@GeneratedValue(strategy = GenerationType.UUID)
+@Column(length = 36)
+private String id;
+
+@Lob
+@Column(nullable = false)
+private byte[] donnees;
+
+// Déduit des octets par FormatImage, jamais recopié de la requête : c'est
+// ce type qui sera renvoyé au navigateur à la lecture.
+@Column(nullable = false, length = 20)
+private String typeContenu;
+```
+
+### Ne pas croire le client : la signature d'un fichier
+
+Le nom du fichier et le `Content-Type` de sa partie sont écrits par le client, qui les choisit librement. Renommer `page.html` en `photo.jpg` ne change pas un seul de ses octets — et c'est aux **octets** que le navigateur se fiera au moment de l'afficher.
+
+La plupart des formats commencent par une suite d'octets fixe, leur **signature** (on parle aussi de *nombre magique*). La lire coûte quelques comparaisons, et dit ce que le fichier est réellement.
+
+```java
+public static boolean estUnPng(byte[] contenu) {
+    int[] signature = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    if (contenu.length < signature.length) {
+        return false;
+    }
+    for (int i = 0; i < signature.length; i++) {
+        // Un byte Java est SIGNE : 0x89 y vaut -119. Le masque & 0xFF le
+        // ramene a 137 avant de le comparer.
+        if ((contenu[i] & 0xFF) != signature[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+```
+
+| Format | Premiers octets |
+|---|---|
+| JPEG | `FF D8 FF` |
+| PNG | `89 50 4E 47 0D 0A 1A 0A` (« .PNG » puis des octets de contrôle) |
+| GIF | `GIF87a` ou `GIF89a` |
+| WebP | `RIFF`, quatre octets de taille, puis `WEBP` — `RIFF` seul désigne aussi un fichier audio WAV |
+| SVG | Aucune : c'est du texte XML, qui peut contenir du JavaScript — **refusé** |
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/image/FormatImage.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/image/FormatImage.java), couvert par [`FormatImageTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/image/FormatImageTest.java) (texte renommé, SVG, fichier WAV, contenu trop court).
+
+```java
+// RIFF est un conteneur générique (WAV, AVI…) : seul « WEBP » à l'octet 8
+// distingue une image.
+if (commencePar(contenu, 'R', 'I', 'F', 'F') && contenu.length >= 12
+        && contenu[8] == 'W' && contenu[9] == 'E' && contenu[10] == 'B' && contenu[11] == 'P') {
+    return Optional.of("image/webp");
+}
+return Optional.empty();
+```
+
+### Une ressource publique dans une API protégée
+
+Une balise `<img src="…">` ne passe pas par `HttpClient` : c'est le navigateur qui télécharge l'image, seul. Aucun intercepteur n'intervient, donc **aucun en-tête `Authorization`** n'est envoyé. Une image servie par une route protégée ne s'afficherait jamais.
+
+Deux issues : télécharger l'image par `HttpClient` et fabriquer une adresse locale pour chaque affichage (lourd, et à refaire partout où une image apparaît), ou ouvrir la **lecture** à tous, en s'appuyant sur l'identifiant impossible à deviner. C'est la seconde qui a été retenue : elle donne exactement le niveau de confidentialité d'une image hébergée ailleurs, que quiconque possède le lien peut voir.
+
+Le même raisonnement impose une **adresse absolue**. Une adresse relative (`/api/…`) serait résolue par le navigateur contre la page, donc contre le serveur Angular — `baseUrlInterceptor` ne s'applique qu'aux appels `HttpClient`.
+
+```java
+// SecurityConfig : ouvrir la LECTURE seulement, l'envoi reste protege.
+.requestMatchers(HttpMethod.GET, "/api/pieces-jointes/*").permitAll()
+```
+
+```java
+// L'adresse est construite a partir de la requete recue : l'hote et le port
+// ne sont ecrits nulle part en dur.
+URI adresse = ServletUriComponentsBuilder.fromCurrentContextPath()
+        .path("/api/pieces-jointes/{id}")
+        .buildAndExpand(piece.getId())
+        .toUri();
+
+// 201 Created : une ressource nouvelle existe, et Location donne son adresse.
+return ResponseEntity.created(adresse).body(new Reponse(adresse.toString()));
+```
+
+```java
+@GetMapping("/api/pieces-jointes/{id}")
+public ResponseEntity<byte[]> lire(@PathVariable String id) {
+    PieceJointe piece = depot.findById(id)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+
+    return ResponseEntity.ok()
+            // Le corps n'est pas du JSON : ce type dit au navigateur quoi en faire.
+            .contentType(MediaType.parseMediaType(piece.getTypeContenu()))
+            // Le contenu d'un identifiant ne change jamais : cache d'un an.
+            .header(HttpHeaders.CACHE_CONTROL, "public, max-age=31536000, immutable")
+            .body(piece.getDonnees());
+}
+```
+
+| Question | Réponse retenue |
+|---|---|
+| Qui peut lire ? | Quiconque possède le lien — comme pour une image externe |
+| Qui peut envoyer ? | Un compte connecté (jeton requis) |
+| Pourquoi une adresse absolue ? | `<img>` résout une adresse relative contre la page, pas contre l'API |
+| Pourquoi `immutable` ? | Une nouvelle image reçoit un nouvel UUID : une copie en cache ne peut pas être périmée |
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/security/SecurityConfig.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/security/SecurityConfig.java) et le test `lecture_estPublique` de [`ImageControllerTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/controller/ImageControllerTest.java). Lancé sur le port 8125 pour la vérification au `curl`, le serveur a renvoyé des adresses en `:8125` : la preuve qu'aucun port n'est écrit en dur.
+
+```java
+// Les images sont affichées par des balises <img>, qui
+// n'envoient jamais le jeton : leur lecture doit être
+// publique. Seul le GET est ouvert — ENVOYER une image
+// reste réservé aux comptes connectés.
+.requestMatchers(HttpMethod.GET, "/api/images/*").permitAll()
+```
+
+### Tâches planifiées : `@Scheduled`
+
+Une image peut cesser de servir de bien des façons : photo remplacée, contact supprimé, publication modifiée, formulaire abandonné juste après l'envoi. Supprimer l'ancienne image dans chaque route concernée ferait six endroits à écrire — et un septième à oublier le jour où une route s'ajoute. C'est la leçon des intercepteurs (section 17) : une règle recopiée finit par manquer quelque part.
+
+L'autre voie est une **tâche planifiée** : une méthode que Spring appelle tout seul, à intervalle régulier, sans qu'aucune requête HTTP ne la déclenche. Elle cherche d'un coup tout ce qui ne sert plus, quelle qu'en soit la raison.
+
+Deux précautions s'imposent. Un **délai de grâce** d'abord : une image fraîchement envoyée n'est référencée par rien tant que son formulaire n'est pas enregistré — la supprimer effacerait l'aperçu sous les yeux de l'utilisateur. Et une recherche dans **toutes** les tables qui peuvent contenir l'adresse, pas seulement celle qui a changé : la même URL peut servir à deux endroits.
+
+```java
+@SpringBootApplication
+@EnableScheduling          // sans lui, les @Scheduled sont ignores SANS aucune erreur
+public class MonApplication { ... }
+```
+
+```java
+@Service
+public class Menage {
+
+    @Scheduled(fixedDelayString = "${menage.intervalle-ms}",
+               initialDelayString = "${menage.intervalle-ms}")
+    public void menageRegulier() {
+        nettoyer(Instant.now().minus(Duration.ofHours(1)));   // delai de grace
+    }
+
+    // La limite en PARAMETRE : un test peut dire « il y a une heure » sans attendre.
+    public int nettoyer(Instant limite) {
+        return depot.supprimerInutilesAvant(limite);
+    }
+}
+```
+
+| Attribut | Déclenchement |
+|---|---|
+| `fixedDelay` | N ms après la **fin** de l'exécution précédente — deux exécutions ne se chevauchent jamais |
+| `fixedRate` | Toutes les N ms depuis le **début** de la précédente — chevauchement possible si elle dure |
+| `cron = "0 0 3 * * *"` | À heure fixe (ici, tous les jours à 3 h) |
+| `initialDelay` | Attente avant la toute première exécution — utile pour ne pas tomber au démarrage des tests |
+
+Un piège attend quiconque met `@Transactional` sur une méthode appelée **depuis sa propre classe**. Spring n'ajoute la transaction qu'en enveloppant le bean dans un *proxy* : seuls les appels qui viennent de l'extérieur passent par cette enveloppe. Un appel interne (`this.nettoyer(...)`) la contourne, et l'annotation est silencieusement ignorée.
+
+```java
+@Service
+public class Exemple {
+
+    public void appelant() {
+        cible();                // appel INTERNE : ne traverse pas le proxy
+    }
+
+    @Transactional              // ignoree quand on passe par appelant()
+    public void cible() { ... }
+}
+```
+
+La parade la plus simple : poser `@Transactional` sur la méthode du **dépôt**, que Spring Data enveloppe lui-même.
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/image/NettoyageImages.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/image/NettoyageImages.java) et [`repository/ImageRepository.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/ImageRepository.java), testés par [`NettoyageImagesTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/image/NettoyageImagesTest.java) — dont le cas « image récente non référencée, gardée ».
+
+```java
+@Transactional
+@Modifying(flushAutomatically = true, clearAutomatically = true)
+@Query("""
+        DELETE FROM Image i
+        WHERE i.dateEnvoi < :limite
+          AND NOT EXISTS (SELECT c.id FROM Contact c WHERE c.photoUrl LIKE CONCAT('%/api/images/', i.id))
+          AND NOT EXISTS (SELECT u.id FROM Utilisateur u WHERE u.photoUrl LIKE CONCAT('%/api/images/', i.id))
+          AND NOT EXISTS (SELECT p.id FROM Publication p WHERE p.imageUrl LIKE CONCAT('%/api/images/', i.id))
+        """)
+int supprimerOrphelinesAvant(@Param("limite") Instant limite);
+```
+
+### Côté Angular : `FormData` et le sélecteur de fichier
+
+Le navigateur fournit l'objet qui construit un corps multipart : **`FormData`**. On y ajoute des parties par `append`, et `HttpClient` l'envoie tel quel.
+
+Le piège classique est de vouloir « aider » en écrivant l'en-tête `Content-Type: multipart/form-data` à la main. Le navigateur n'y ajoute alors plus la frontière entre les parties, et le serveur répond qu'il ne trouve aucune frontière. Il faut le laisser écrire l'en-tête lui-même.
+
+```typescript
+envoyer(fichier: File): Observable<string> {
+  const donnees = new FormData();
+  donnees.append('fichier', fichier);   // meme nom que @RequestParam cote Spring
+
+  // PAS de headers: { 'Content-Type': ... } : le navigateur ecrit lui-meme
+  // « multipart/form-data; boundary=----… ». Sans la frontiere, corps illisible.
+  return this.http.post<{ url: string }>('/api/pieces-jointes', donnees)
+    .pipe(map(reponse => reponse.url));
+}
+```
+
+L'apparence native d'un `<input type="file">` (« Parcourir… Aucun fichier sélectionné ») ne se stylise presque pas. On le cache, et un vrai bouton le déclenche par une **variable de gabarit**.
+
+```html
+<button type="button" (click)="selecteur.click()">Choisir un fichier</button>
+
+<!-- #selecteur : variable de gabarit, qui designe l'element lui-meme -->
+<input #selecteur type="file" hidden accept="image/png,image/jpeg"
+       (change)="choisi($event)" />
+```
+
+```typescript
+choisi(evenement: Event): void {
+  const selecteur = evenement.target as HTMLInputElement;
+  const fichier = selecteur.files?.[0];   // FileList : ici un seul fichier
+
+  // Vide TOUT DE SUITE : sinon, rechoisir le meme fichier (apres un echec,
+  // par exemple) ne declenche aucun evenement (change).
+  selecteur.value = '';
+
+  if (fichier) {
+    this.envoyer(fichier).subscribe(/* ... */);
+  }
+}
+```
+
+| Élément | Rôle |
+|---|---|
+| `File` | Un fichier choisi : `name`, `size` (en octets), `type` (type MIME annoncé par le système) |
+| `FormData.append(nom, valeur)` | Ajoute une partie au corps multipart |
+| `accept` | Filtre proposé par le sélecteur de fichiers — une aide, pas une sécurité |
+| `hidden` + `.click()` | Remplacer l'apparence native par un vrai bouton |
+| `selecteur.value = ''` | Permettre de rechoisir le même fichier |
+
+Vérifier la taille et le type **avant** l'envoi reste utile — réponse immédiate, pas de 5 Mo transférés pour rien — mais c'est un confort, au même titre que la liste des critères du mot de passe (section 27). Le serveur revérifie tout.
+
+**Dans le projet** — [`carnet-contact_frontend/src/app/services/image.ts`](../carnet-contact_frontend/src/app/services/image.ts), dont le test vérifie justement l'absence de `Content-Type` :
+
+```typescript
+service.envoyer(fichier).subscribe(u => (url = u));
+
+const requete = backend.expectOne('/api/images');
+expect(requete.request.body).toBeInstanceOf(FormData);
+expect(requete.request.headers.has('Content-Type')).toBe(false);
+```
+
+### Un composant qui reçoit un `FormControl`
+
+Le champ « adresse ou fichier » sert dans quatre formulaires. Pour qu'il s'intègre sans que ces formulaires changent leur logique, il reçoit le **`FormControl` du parent** en `input()`, et y écrit l'adresse obtenue. Le formulaire parent ne voit qu'une valeur texte, exactement comme si elle avait été collée.
+
+```typescript
+@Component({
+  selector: 'app-champ-fichier',
+  imports: [ReactiveFormsModule],
+  template: `
+    <input [formControl]="controle()" />
+    <button type="button" (click)="selecteur.click()">Envoyer</button>
+    <input #selecteur type="file" hidden (change)="choisi($event)" />
+  `
+})
+export class ChampFichier {
+  controle = input.required<FormControl<string | null>>();
+
+  private surSucces(url: string): void {
+    this.controle().setValue(url);   // le parent voit une adresse, rien d'autre
+    this.controle().markAsDirty();   // c'est bien une saisie de l'utilisateur
+  }
+}
+```
+
+```html
+<!-- Dans le parent -->
+<app-champ-fichier [controle]="formulaire.controls.photoUrl" />
+```
+
+| Approche | Écriture dans le parent | Coût |
+|---|---|---|
+| `FormControl` passé en `input()` | `[controle]="formulaire.controls.photo"` | Aucun code particulier |
+| Implémenter `ControlValueAccessor` | `formControlName="photo"`, comme un `<input>` | Écrire `writeValue`, `registerOnChange`… et déclarer `NG_VALUE_ACCESSOR` |
+
+Deux détails complètent le tableau. L'état d'envoi (« Envoi en cours… », message d'erreur) vit dans des **signaux** : l'application tourne sans zone.js, et c'est un signal modifié qui déclenche le rafraîchissement de l'affichage à l'arrivée de la réponse. Et un composant standalone doit être listé dans le tableau `imports` du composant qui l'utilise — l'`import` TypeScript en haut du fichier ne suffit pas (erreur `NG8001`).
+
+**Dans le projet** — [`carnet-contact_frontend/src/app/components/champ-image/champ-image.ts`](../carnet-contact_frontend/src/app/components/champ-image/champ-image.ts), utilisé dans [`pages/profil/profil.html`](../carnet-contact_frontend/src/app/pages/profil/profil.html), [`components/contact-form/contact-form.html`](../carnet-contact_frontend/src/app/components/contact-form/contact-form.html), [`pages/contact-edit/contact-edit.html`](../carnet-contact_frontend/src/app/pages/contact-edit/contact-edit.html) et [`components/publication-form/publication-form.html`](../carnet-contact_frontend/src/app/components/publication-form/publication-form.html)
+
+```typescript
+this.images.envoyer(fichier).pipe(
+  // finalize (section 16) : remis à false en cas de succès COMME d'échec.
+  finalize(() => this.envoiEnCours.set(false))
+).subscribe({
+  next: url => {
+    this.controle().setValue(url);
+    this.controle().markAsDirty();
+  },
+  // La bannière vient de erreurInterceptor ; l'adresse précédente reste en place.
+  error: () => {}
+});
+```
+
+```html
+<app-champ-image
+  class="champ"
+  identifiant="photoUrl"
+  libelle="Photo de profil"
+  placeholder="https://exemple.fr/moi.jpg"
+  [controle]="formulaire.controls.photoUrl" />
+```
+
+---
+
+## 37. Backend Spring Boot
 
 Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
 
@@ -6391,7 +6816,7 @@ Le principe est exactement le même que l'injection de dépendances vue côté A
 
 ---
 
-## 37. Git et GitHub
+## 38. Git et GitHub
 
 Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
 
@@ -6448,7 +6873,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 
 ---
 
-## 38. Pense-bête de dépannage
+## 39. Pense-bête de dépannage
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
@@ -6472,12 +6897,12 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Une liste ne se met pas à jour après un ajout ou une suppression faits par un autre composant | Chaque composant possède sa propre copie de la donnée dans un signal local | Déplacer la donnée dans le service (signal partagé, voir section 12) plutôt que de recharger la page |
 | Le formulaire d'édition reste vide alors que la fiche s'affiche bien | Formulaire pré-rempli à la construction, avant l'arrivée des données du signal partagé | Pré-remplir dans un `effect()` qui réagit au signal, pas dans le `constructor` directement (section 14) |
 | Le formulaire d'édition efface la saisie en cours de temps en temps | Un `effect()` de pré-remplissage se réexécute à chaque changement du signal (ex : rechargement de la liste) | Ajouter un drapeau booléen : ne `patchValue()` qu'une seule fois |
-| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 36) ; regarder la ligne `preflight` dans l'onglet Réseau |
+| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 37) ; regarder la ligne `preflight` dans l'onglet Réseau |
 | Modification enregistrée côté serveur mais la fiche affiche encore l'ancienne valeur | Le signal partagé n'a pas été mis à jour après le `PUT` | Dans le service, `.update()` avec `.map()` pour remplacer l'élément modifié par la réponse du serveur |
 | `NG0203` / `inject() must be called from an injection context` sur un `effect()` | `effect()` appelé hors constructeur / hors champ de classe | Le déplacer dans le `constructor` du composant |
 | Backend éteint ou en erreur : liste vide, formulaire sans réaction, aucun message | `.subscribe()` n'a qu'un callback de succès, l'erreur du flux n'est traitée nulle part | `.pipe(catchError(...))` dans le service + un signal d'erreur affiché (section 15) |
 | `catchError` provoque `Type 'void' is not assignable to type 'ObservableInput<...>'` | Le callback de `catchError` ne retourne pas d'Observable | Retourner `of(valeurDeRepli)`, `EMPTY`, ou `throwError(() => err)` |
-| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 36) |
+| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 37) |
 | Une modification du code (nouveau signal, `delay()` ajouté...) reste sans effet dans le navigateur | Le rechargement à chaud de `ng serve` n'a pas pris (fréquent sous Windows / avec le SSR) | `Ctrl + C` sur `ng serve`, `npm start`, attendre `bundle generation complete`, puis `Ctrl + Shift + R` dans le navigateur |
 | L'indicateur de chargement ne s'affiche jamais au rafraîchissement de la page | Le `GET` initial part côté serveur (SSR) : `chargement` passe à `true` puis `false` avant l'envoi du HTML | Normal ; l'indicateur n'apparaît que sur les requêtes déclenchées par un clic (ajout, modif, suppression), section 16 |
 | L'indicateur de chargement reste allumé après une erreur réseau | `set(false)` placé seulement dans `.subscribe(next)`, qui ne s'exécute pas en cas d'erreur | Le mettre dans `finalize()` du `.pipe()`, qui s'exécute quelle que soit l'issue (section 16) |
@@ -6565,3 +6990,12 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Les annotations `@NotBlank` / `@Size` d'un record semblent ignorées | `@Valid` manque devant le `@RequestBody` (ou `spring-boot-starter-validation` n'est pas dans le `pom.xml`) | Ajouter `@Valid` au paramètre et la dépendance de validation (section 33) |
 | `TransientPropertyValueException … references an unsaved transient instance` au `flush` d'un test | Une requête `@Modifying` (DELETE en masse) a supprimé des lignes dont les objets restent chargés dans le contexte de persistance : Hibernate les croit vivants | `@Modifying(flushAutomatically = true, clearAutomatically = true)` sur la requête (section 35) |
 | Une suppression qui viole une clé étrangère passe pourtant dans un test | Test `@Transactional` : le commit n'arrive jamais, les contraintes ne sont vérifiées qu'à l'écriture réelle | `entityManager.flush()` après l'action, puis `entityManager.clear()` avant de relire (section 35) |
+| `Could not resolve placeholder 'carnet.images.delai-grace-ms'` dans les tests, alors que l'application démarre normalement | `src/test/resources/application.properties` **remplace** celui de `src/main/resources` au lieu de le compléter | Recopier chaque nouvelle propriété dans le fichier de test (sections 26 et 36) |
+| `'app-champ-image' is not a known element` (NG8001) alors que l'`import` TypeScript est bien écrit | Le composant n'est pas listé dans le tableau `imports` du `@Component` qui l'utilise | L'ajouter au tableau : l'`import` en haut du fichier rend seulement le nom disponible (section 36) |
+| Une photo de téléphone est refusée en 413 | Limite par défaut de Spring : 1 Mo par fichier | `spring.servlet.multipart.max-file-size` et `max-request-size` dans `application.properties` (section 36) |
+| `the request was rejected because no multipart boundary was found` (400) | En-tête `Content-Type: multipart/form-data` écrit à la main sur un envoi `FormData` : la frontière manque | Ne pas poser l'en-tête, le navigateur l'écrit lui-même avec la frontière (section 36) |
+| Choisir une seconde fois le même fichier ne déclenche rien | L'`<input type="file">` a gardé sa valeur : aucun événement `change` | Vider `selecteur.value = ''` juste après chaque sélection (section 36) |
+| Une image envoyée ne s'affiche pas, 401 dans l'onglet Réseau | Une balise `<img>` n'envoie jamais le jeton, et la route de lecture est protégée | Ouvrir la seule lecture : `requestMatchers(HttpMethod.GET, "/api/images/*").permitAll()`, avec un identifiant non devinable (section 36) |
+| Une image envoyée ne s'affiche pas, 404 sur `localhost:4200/api/...` | Adresse relative : `<img>` la résout contre le serveur Angular, sans passer par l'intercepteur de base URL | Faire renvoyer une adresse absolue par le serveur (`ServletUriComponentsBuilder`) (section 36) |
+| Une méthode `@Scheduled` ne s'exécute jamais, sans aucune erreur | `@EnableScheduling` absent | L'ajouter sur la classe principale de l'application (section 36) |
+| `TransactionRequiredException` sur une requête `@Modifying` appelée depuis une tâche planifiée | `@Transactional` posé sur une méthode appelée depuis sa propre classe : l'appel ne traverse pas le proxy | Poser `@Transactional` sur la méthode du dépôt, ou sur la méthode appelée de l'extérieur (section 36) |

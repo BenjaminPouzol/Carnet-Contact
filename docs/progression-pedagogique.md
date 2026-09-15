@@ -883,6 +883,108 @@ sommaire), corrigée. Non vérifié : le rendu visuel des schémas, faute de mot
 Mermaid disponible hors ligne — à contrôler sur GitHub ou dans VS Code avec
 l'extension.
 
+### Partie 15 — Envoi d'images depuis l'appareil
+Demande de l'utilisateur : pouvoir envoyer une image depuis son ordinateur, et
+ne plus dépendre uniquement d'une URL. Ajoutée en cours de conception : qu'une
+image envoyée puis devenue inutile soit supprimée.
+
+Incident de départ, à retenir. La première formulation (« que les images ne
+puissent être téléchargées et plus uniquement être mises via un lien ») a d'abord
+été comprise à l'envers : l'assistant a vérifié le code, constaté qu'aucun envoi
+de fichier n'existait, et répondu que la demande était déjà satisfaite. La
+reformulation de l'utilisateur a levé l'ambiguïté. Réflexe à garder : quand une
+demande semble déjà réalisée, c'est souvent qu'elle a été mal lue — reformuler
+avant de conclure.
+
+Méthode : conception validée avant le code, par questions successives, puis spec
+(`docs/superpowers/specs/2026-09-15-envoi-images-design.md`) et plan
+(`docs/superpowers/plans/2026-09-15-envoi-images.md`). Choix de l'utilisateur :
+- Portée : **photo de profil, photo d'un contact, image d'une publication**
+- Stockage : **en base** (colonne BLOB) — cohérent avec H2 en mémoire, où un
+  dossier sur disque aurait survécu aux données qui le référencent
+- Limites : **5 Mo, JPEG / PNG / WebP / GIF**
+- Rythme : **livraison complète**
+- Approche : **une route d'envoi dédiée qui renvoie une URL**, parmi trois
+  proposées (fichier joint à chaque formulaire, ou image encodée en base64 dans
+  le champ — écartées pour le nombre de contrats d'API à changer et le poids des
+  réponses JSON)
+- Nettoyage : **tâche planifiée seule**, plutôt que suppression immédiate dans
+  chaque route qui change une image
+
+Premier travail mené sur une **branche** (`envoi-images-abonnements`) plutôt que
+directement sur `main` : la fonctionnalité suivante (abonnements) s'enchaîne
+dessus, et la fusion se fera une fois l'ensemble vérifié.
+
+#### Backend
+131. **Une image envoyée devient une URL comme une autre.** `POST /api/images`
+     range les octets et renvoie une adresse, que le frontend place dans le champ
+     qui existait déjà. Aucune colonne ajoutée à `Contact`, `Utilisateur` ni
+     `Publication`, et les huit `<img>` du frontend inchangés
+132. **Lecture publique par UUID.** Une balise `<img>` n'envoie pas le jeton et
+     ne passe pas par les intercepteurs : `GET /api/images/*` est en
+     `permitAll`, le `POST` reste protégé. L'identifiant aléatoire est la seule
+     protection — le même niveau qu'une URL externe
+133. **Adresse absolue**, construite par `ServletUriComponentsBuilder` à partir
+     de la requête reçue. Une adresse relative aurait visé le serveur Angular.
+     Vérifié au `curl` : sur le port 8125, l'adresse renvoyée portait bien 8125
+134. **Le format se lit dans les octets** (`FormatImage`), jamais dans le nom ni
+     dans le `Content-Type` annoncé. SVG volontairement exclu : du texte qui peut
+     porter du JavaScript. 415 pour un format refusé
+135. `@Lob byte[]` pour les octets, `GenerationType.UUID` pour l'identifiant,
+     `Cache-Control: immutable` à la lecture (le contenu d'un identifiant ne
+     change jamais)
+136. **Nettoyage planifié** (`@Scheduled`, `@EnableScheduling`) : une seule
+     requête `DELETE … NOT EXISTS` sur les trois tables, avec un **délai de
+     grâce** d'une heure — une image fraîchement envoyée n'est encore référencée
+     par rien tant que son formulaire n'est pas enregistré. La date limite est un
+     paramètre, pour qu'un test simule « il y a une heure » sans attendre
+137. `@Transactional` posé sur la méthode du **dépôt** et non du service : la
+     méthode planifiée appelle le service de l'intérieur, et un appel interne ne
+     traverse pas le proxy qui ouvre les transactions
+138. Suppression d'un compte : ses images partent avec lui — la tâche de
+     nettoyage n'aurait agi qu'une heure plus tard, et la clé étrangère aurait
+     bloqué la suppression entre-temps. Le test l'a montré avant le correctif
+
+#### Frontend
+139. `ImageService` : `FormData`, et **aucun `Content-Type` écrit à la main** —
+     le navigateur doit y ajouter la frontière entre les parties. Un test le vérifie
+140. Composant `champ-image` : champ URL + bouton qui déclenche un
+     `<input type="file">` caché. Il reçoit le `FormControl` du parent en
+     `input()` plutôt que d'implémenter `ControlValueAccessor` ; le parent ne voit
+     qu'une adresse. Vérification locale de la taille et du format (confort, pas
+     sécurité), `value` du sélecteur vidée après chaque choix, état en signaux
+     (l'application tourne sans zone.js)
+141. Intégré aux quatre formulaires. Les aperçus existants (profil, publication)
+     fonctionnent sans modification ; pendant l'envoi, `chargementInterceptor`
+     grise déjà les boutons d'enregistrement
+142. `erreurInterceptor` traduit 413 et 415
+
+#### Incidents
+- `Could not resolve placeholder 'carnet.images.delai-grace-ms'` dans les tests
+  seulement : `src/test/resources/application.properties` **remplace** celui de
+  `main` au lieu de s'y ajouter. Le test d'envoi passait par chance (la limite
+  par défaut de 1 Mo suffisait à un PNG de 12 octets)
+- `'app-champ-image' is not a known element` : l'`import` TypeScript avait été
+  ajouté, pas l'entrée du tableau `imports` du composant
+
+#### Vérifications faites
+- Backend : 113 tests au vert (91 → 113 : 9 sur la signature, 7 sur la route, 5
+  sur le nettoyage, 1 sur la suppression d'un compte). Frontend : 94 tests au
+  vert (88 → 94)
+- `ng build` sans avertissement ; paquet initial de 951 à 953 kB
+- `curl` contre le vrai serveur sur le port 8125 (vérifié libre avant, arrêté
+  après) : envoi 201, lecture **sans jeton** 200 avec le bon type, l'en-tête de
+  cache et des octets identiques, faux JPEG 415, envoi sans jeton 401, fichier
+  de 5,5 Mo **413** — et 413 aussi à 20 Mo, sans coupure de connexion : le
+  gestionnaire d'exception prévu en secours s'est révélé inutile
+- Non vérifié : le parcours dans un navigateur (bouton, sélecteur de fichiers,
+  aperçu après envoi) ; la tâche planifiée en conditions réelles, testée
+  seulement par appel direct de `nettoyer(limite)`
+
+Notions ajoutées au support : **section 36 « Envoi de fichiers »**. Entrées
+ajoutées au pense-bête. Sections Backend / Git / Pense-bête renumérotées
+37 / 38 / 39, renvois corrigés (dont le lien du cours Angular).
+
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
