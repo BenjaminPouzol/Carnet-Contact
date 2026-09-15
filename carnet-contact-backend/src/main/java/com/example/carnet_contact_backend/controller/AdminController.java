@@ -2,10 +2,13 @@ package com.example.carnet_contact_backend.controller;
 
 import com.example.carnet_contact_backend.model.Role;
 import com.example.carnet_contact_backend.model.Utilisateur;
+import com.example.carnet_contact_backend.repository.AbonnementRepository;
+import com.example.carnet_contact_backend.repository.BlocageRepository;
 import com.example.carnet_contact_backend.repository.ContactRepository;
 import com.example.carnet_contact_backend.repository.ImageRepository;
 import com.example.carnet_contact_backend.repository.JetonRafraichissementRepository;
 import com.example.carnet_contact_backend.repository.MessageRepository;
+import com.example.carnet_contact_backend.repository.NotificationRepository;
 import com.example.carnet_contact_backend.repository.PublicationRepository;
 import com.example.carnet_contact_backend.repository.ReactionPublicationRepository;
 import com.example.carnet_contact_backend.repository.ReactionRepository;
@@ -45,6 +48,9 @@ public class AdminController {
     private final ReactionPublicationRepository reactionPublicationRepository;
     private final JetonRafraichissementRepository jetonRepository;
     private final ImageRepository imageRepository;
+    private final AbonnementRepository abonnementRepository;
+    private final BlocageRepository blocageRepository;
+    private final NotificationRepository notificationRepository;
 
     public AdminController(
             UtilisateurRepository utilisateurRepository,
@@ -54,7 +60,10 @@ public class AdminController {
             PublicationRepository publicationRepository,
             ReactionPublicationRepository reactionPublicationRepository,
             JetonRafraichissementRepository jetonRepository,
-            ImageRepository imageRepository) {
+            ImageRepository imageRepository,
+            AbonnementRepository abonnementRepository,
+            BlocageRepository blocageRepository,
+            NotificationRepository notificationRepository) {
         this.utilisateurRepository = utilisateurRepository;
         this.contactRepository = contactRepository;
         this.messageRepository = messageRepository;
@@ -63,6 +72,9 @@ public class AdminController {
         this.reactionPublicationRepository = reactionPublicationRepository;
         this.jetonRepository = jetonRepository;
         this.imageRepository = imageRepository;
+        this.abonnementRepository = abonnementRepository;
+        this.blocageRepository = blocageRepository;
+        this.notificationRepository = notificationRepository;
     }
 
     /**
@@ -224,6 +236,14 @@ public class AdminController {
         // qu'une heure plus tard au plus tôt ; d'ici là, leur clé étrangère vers
         // le compte bloquerait sa suppression.
         imageRepository.supprimerCellesDe(cible.getId());
+
+        // Ses relations avec les autres comptes. Chacune de ces trois tables
+        // pointe vers le compte par DEUX colonnes (abonné ou suivi, bloqueur ou
+        // bloqué, destinataire ou acteur) : les requêtes suppriment les lignes
+        // où il apparaît d'un côté comme de l'autre.
+        notificationRepository.supprimerCellesDe(cible.getId());
+        blocageRepository.supprimerCeuxDe(cible.getId());
+        abonnementRepository.supprimerCeuxDe(cible.getId());
 
         jetonRepository.supprimerTousPour(cible.getId());
         utilisateurRepository.delete(cible);

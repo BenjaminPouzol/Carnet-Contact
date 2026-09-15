@@ -391,4 +391,58 @@ class AdminControllerTest {
 
         assertThat(imageRepository.count()).isZero();
     }
+
+    @Autowired
+    private com.example.carnet_contact_backend.repository.AbonnementRepository abonnementRepository;
+
+    @Autowired
+    private com.example.carnet_contact_backend.repository.BlocageRepository blocageRepository;
+
+    @Autowired
+    private com.example.carnet_contact_backend.repository.NotificationRepository notificationRepository;
+
+    /**
+     * Un compte est relié aux autres de trois nouvelles façons : il suit et il
+     * est suivi, il bloque ou il est bloqué, il reçoit et il provoque des
+     * notifications. Chaque lien pointe vers lui par une clé étrangère, DANS UN
+     * SENS OU DANS L'AUTRE : en oublier un seul, et le compte ne peut plus être
+     * supprimé.
+     */
+    @Test
+    @DisplayName("Supprimer un compte emporte ses abonnements, blocages et notifications, dans les deux sens")
+    void supprimerUnCompte_emporteSesRelations() throws Exception {
+        Utilisateur tiers = creer("tiers@exemple.fr", Role.UTILISATEUR);
+        String jetonTiers = jwtService.genererJeton(tiers.getEmail(), Role.UTILISATEUR);
+
+        // Simple suit le patron, le patron suit Simple : deux abonnements, et
+        // deux notifications « vous suit » — Simple est tour à tour acteur et
+        // destinataire.
+        mockMvc.perform(put("/api/abonnements/" + patron.getId())
+                        .header("Authorization", "Bearer " + jetonSimple))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/abonnements/" + simple.getId())
+                        .header("Authorization", "Bearer " + jetonPatron))
+                .andExpect(status().isOk());
+
+        // Un tiers bloque Simple : Simple est ici le compte BLOQUÉ.
+        mockMvc.perform(put("/api/blocages/" + simple.getId())
+                        .header("Authorization", "Bearer " + jetonTiers))
+                .andExpect(status().isNoContent());
+
+        assertThat(abonnementRepository.count()).isEqualTo(2);
+        assertThat(blocageRepository.count()).isEqualTo(1);
+        assertThat(notificationRepository.count()).isEqualTo(2);
+
+        mockMvc.perform(delete("/api/admin/comptes/" + simple.getId())
+                        .header("Authorization", "Bearer " + jetonPatron))
+                .andExpect(status().isNoContent());
+
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(abonnementRepository.count()).isZero();
+        assertThat(blocageRepository.count()).isZero();
+        assertThat(notificationRepository.count()).isZero();
+        assertThat(utilisateurRepository.findById(simple.getId())).isEmpty();
+    }
 }
