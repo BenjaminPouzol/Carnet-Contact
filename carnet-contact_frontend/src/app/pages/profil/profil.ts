@@ -6,6 +6,8 @@ import { AuthService } from '../../services/auth';
 import { EtatHttpService } from '../../services/etat-http';
 import { NotificationService } from '../../services/notification';
 import { ChampImage } from '../../components/champ-image/champ-image';
+import { RESEAUX } from '../../contact.model';
+import { DemandeProfil } from '../../utilisateur.model';
 
 @Component({
   selector: 'app-profil',
@@ -23,11 +25,25 @@ export class Profil {
   utilisateur = this.auth.utilisateur;
   permissionNotifications = this.notifications.permission;
 
+  // La même liste que pour les contacts : le gabarit la parcourt avec @for,
+  // au lieu d'écrire six fois le même champ.
+  readonly reseaux = RESEAUX;
+
   enregistre = signal(false);
 
   formulaire = this.fb.group({
     nomAffichage: ['', Validators.required],
-    photoUrl: ['']
+    photoUrl: [''],
+    // Validators.email sans required : facultatif, mais s'il est rempli il doit
+    // ressembler à une adresse — la même règle que le @Email du serveur.
+    emailPro: ['', Validators.email],
+    instagram: [''],
+    twitter: [''],
+    facebook: [''],
+    twitch: [''],
+    youtube: [''],
+    linkedin: [''],
+    comptePrive: [false]
   });
 
   private formulaireRempli = false;
@@ -40,9 +56,21 @@ export class Profil {
     effect(() => {
       const u = this.utilisateur();
       if (u && !this.formulaireRempli) {
+        // `?? ''` : un champ absent côté serveur vaut null, et un champ de
+        // formulaire afficherait littéralement « null » dans la case.
         this.formulaire.patchValue({
           nomAffichage: u.nomAffichage,
-          photoUrl: u.photoUrl ?? ''
+          photoUrl: u.photoUrl ?? '',
+          emailPro: u.emailPro ?? '',
+          instagram: u.instagram ?? '',
+          twitter: u.twitter ?? '',
+          facebook: u.facebook ?? '',
+          twitch: u.twitch ?? '',
+          youtube: u.youtube ?? '',
+          linkedin: u.linkedin ?? '',
+          // `?? false` : une session enregistrée avant les abonnements n'a pas
+          // encore ce champ dans localStorage.
+          comptePrive: u.comptePrive ?? false
         });
         this.formulaireRempli = true;
       }
@@ -54,15 +82,29 @@ export class Profil {
       return;
     }
 
-    const { nomAffichage, photoUrl } = this.formulaire.value;
+    const valeurs = this.formulaire.getRawValue();
+    const demande: DemandeProfil = {
+      nomAffichage: valeurs.nomAffichage!,
+      photoUrl: valeurs.photoUrl ?? '',
+      emailPro: valeurs.emailPro ?? '',
+      instagram: valeurs.instagram ?? '',
+      twitter: valeurs.twitter ?? '',
+      facebook: valeurs.facebook ?? '',
+      twitch: valeurs.twitch ?? '',
+      youtube: valeurs.youtube ?? '',
+      linkedin: valeurs.linkedin ?? '',
+      comptePrive: valeurs.comptePrive ?? false
+    };
 
-    this.auth.modifierProfil(nomAffichage!, photoUrl || '').subscribe({
+    this.auth.modifierProfil(demande).subscribe({
       next: () => {
         this.enregistre.set(true);
         // Le message de confirmation disparaît seul : il informe, il n'a pas
         // à rester à l'écran indéfiniment.
         setTimeout(() => this.enregistre.set(false), 2500);
-      }
+      },
+      // La bannière vient de erreurInterceptor ; la saisie reste en place.
+      error: () => {}
     });
   }
 

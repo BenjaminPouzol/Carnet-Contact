@@ -30,6 +30,25 @@ export interface Utilisateur extends ReseauxRenseignes {
 }
 
 /**
+ * Ce que la page Profil envoie pour modifier son compte.
+ *
+ * Toujours les dix champs, même inchangés : le formulaire les connaît tous, et
+ * une chaîne vide dit clairement « effacé » au serveur (qui la ramène à null).
+ */
+export interface DemandeProfil {
+  nomAffichage: string;
+  photoUrl: string;
+  emailPro: string;
+  instagram: string;
+  twitter: string;
+  facebook: string;
+  twitch: string;
+  youtube: string;
+  linkedin: string;
+  comptePrive: boolean;
+}
+
+/**
  * Ce qu'un compte laisse voir de lui aux AUTRES : ni email, ni rôle, ni état.
  *
  * C'est la forme que renvoient désormais la liste des interlocuteurs, les

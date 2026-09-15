@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { EMPTY, Observable, catchError, tap } from 'rxjs';
-import { AuteurPublic, ReponseAuth, Utilisateur } from '../utilisateur.model';
+import { AuteurPublic, DemandeProfil, ReponseAuth, Utilisateur } from '../utilisateur.model';
 import { SessionService } from './session';
 import { contexte } from '../interceptors/http-contexte';
 
@@ -69,10 +69,17 @@ export class AuthService {
     }
   }
 
-  /** Met à jour son propre profil (nom affiché, photo). */
-  modifierProfil(nomAffichage: string, photoUrl: string): Observable<Utilisateur> {
+  /**
+   * Met à jour son propre profil : nom, photo, coordonnées professionnelles,
+   * confidentialité.
+   *
+   * Un objet plutôt que dix paramètres : à dix arguments de même type, une
+   * inversion entre `twitter` et `twitch` passerait inaperçue à la compilation.
+   * Avec un objet, chaque valeur porte son nom.
+   */
+  modifierProfil(demande: DemandeProfil): Observable<Utilisateur> {
     return this.http.put<Utilisateur>('/api/utilisateurs/moi',
-      { nomAffichage, photoUrl },
+      demande,
       { context: contexte({ libelle: 'Impossible d\'enregistrer le profil' }) }
     ).pipe(
       tap(utilisateur => this.session.majUtilisateur(utilisateur))
