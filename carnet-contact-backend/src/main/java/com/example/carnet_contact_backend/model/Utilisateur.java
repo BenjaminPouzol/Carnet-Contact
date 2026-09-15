@@ -41,7 +41,8 @@ public class Utilisateur {
 
     private String nomAffichage;
 
-    // Photo de profil : simple URL vers une image hébergée ailleurs.
+    // Photo de profil : une URL — vers une image hébergée ailleurs, ou vers une
+    // image envoyée à ce serveur (/api/images).
     private String photoUrl;
 
     /**

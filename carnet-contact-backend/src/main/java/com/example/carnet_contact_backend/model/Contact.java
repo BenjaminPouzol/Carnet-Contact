@@ -24,7 +24,8 @@ public class Contact {
     // Champ optionnel : adresse professionnelle, en plus de l'adresse perso.
     private String emailPro;
 
-    // Photo du contact : une URL, pas un fichier envoyé au serveur.
+    // Photo du contact : une URL — saisie à la main, ou obtenue en envoyant
+    // une image (/api/images), qui renvoie justement une adresse.
     private String photoUrl;
 
     // Réseaux sociaux, tous optionnels. Stockés comme du texte libre : selon

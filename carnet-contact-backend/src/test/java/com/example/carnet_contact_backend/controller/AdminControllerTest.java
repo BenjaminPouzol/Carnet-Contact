@@ -363,4 +363,32 @@ class AdminControllerTest {
                         .header("Authorization", "Bearer " + jetonPatron))
                 .andExpect(status().isNotFound());
     }
+
+    @Autowired
+    private com.example.carnet_contact_backend.repository.ImageRepository imageRepository;
+
+    /**
+     * Une image pointe vers son propriétaire par une clé étrangère. La tâche de
+     * nettoyage ne l'aurait supprimée qu'une heure plus tard au plus tôt : sans
+     * suppression explicite, c'est le compte qui ne pourrait pas partir.
+     */
+    @Test
+    @DisplayName("Supprimer un compte emporte les images qu'il a envoyées")
+    void supprimerUnCompte_emporteSesImages() throws Exception {
+        byte[] png = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00};
+        mockMvc.perform(multipart("/api/images")
+                        .file(new org.springframework.mock.web.MockMultipartFile(
+                                "fichier", "p.png", "image/png", png))
+                        .header("Authorization", "Bearer " + jetonSimple))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(delete("/api/admin/comptes/" + simple.getId())
+                        .header("Authorization", "Bearer " + jetonPatron))
+                .andExpect(status().isNoContent());
+
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(imageRepository.count()).isZero();
+    }
 }

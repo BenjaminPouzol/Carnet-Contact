@@ -3,6 +3,7 @@ package com.example.carnet_contact_backend.controller;
 import com.example.carnet_contact_backend.model.Role;
 import com.example.carnet_contact_backend.model.Utilisateur;
 import com.example.carnet_contact_backend.repository.ContactRepository;
+import com.example.carnet_contact_backend.repository.ImageRepository;
 import com.example.carnet_contact_backend.repository.JetonRafraichissementRepository;
 import com.example.carnet_contact_backend.repository.MessageRepository;
 import com.example.carnet_contact_backend.repository.PublicationRepository;
@@ -43,6 +44,7 @@ public class AdminController {
     private final PublicationRepository publicationRepository;
     private final ReactionPublicationRepository reactionPublicationRepository;
     private final JetonRafraichissementRepository jetonRepository;
+    private final ImageRepository imageRepository;
 
     public AdminController(
             UtilisateurRepository utilisateurRepository,
@@ -51,7 +53,8 @@ public class AdminController {
             ReactionRepository reactionRepository,
             PublicationRepository publicationRepository,
             ReactionPublicationRepository reactionPublicationRepository,
-            JetonRafraichissementRepository jetonRepository) {
+            JetonRafraichissementRepository jetonRepository,
+            ImageRepository imageRepository) {
         this.utilisateurRepository = utilisateurRepository;
         this.contactRepository = contactRepository;
         this.messageRepository = messageRepository;
@@ -59,6 +62,7 @@ public class AdminController {
         this.publicationRepository = publicationRepository;
         this.reactionPublicationRepository = reactionPublicationRepository;
         this.jetonRepository = jetonRepository;
+        this.imageRepository = imageRepository;
     }
 
     /**
@@ -215,6 +219,12 @@ public class AdminController {
         reactionRepository.supprimerCellesDesMessagesDe(cible.getId());
         messageRepository.supprimerCeuxDe(cible.getId());
         contactRepository.supprimerCeuxDe(cible.getId());
+
+        // Ses images envoyées. La tâche de nettoyage ne les aurait supprimées
+        // qu'une heure plus tard au plus tôt ; d'ici là, leur clé étrangère vers
+        // le compte bloquerait sa suppression.
+        imageRepository.supprimerCellesDe(cible.getId());
+
         jetonRepository.supprimerTousPour(cible.getId());
         utilisateurRepository.delete(cible);
 
