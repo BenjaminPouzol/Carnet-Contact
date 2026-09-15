@@ -1,0 +1,5 @@
+/* Un élément personnalisé est « inline » par défaut ; inline-block lui laisse
+   occuper la place de son bouton, à côté d'un nom ou d'autres actions. */
+:host {
+  display: inline-block;
+}
