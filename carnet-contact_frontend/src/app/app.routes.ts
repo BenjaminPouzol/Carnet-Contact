@@ -6,6 +6,7 @@ import { Connexion } from './pages/connexion/connexion';
 import { Messages } from './pages/messages/messages';
 import { Profil } from './pages/profil/profil';
 import { Fil } from './pages/fil/fil';
+import { Personne } from './pages/personne/personne';
 import { authGuard } from './auth-guard';
 import { adminGuard } from './admin-guard';
 
@@ -22,6 +23,12 @@ export const routes: Routes = [
   { path: 'fil', component: Fil, canActivate: [authGuard] },
   { path: 'contact/:id', component: ContactDetail, canActivate: [authGuard] },
   { path: 'contact/:id/modifier', component: ContactEdit, canActivate: [authGuard] },
+
+  // La page d'une personne (un COMPTE de l'application), à ne pas confondre
+  // avec contact/:id (une fiche de son carnet privé). On y arrive depuis le fil,
+  // la recherche ou la liste des abonnements.
+  { path: 'personne/:id', component: Personne, canActivate: [authGuard] },
+
   { path: 'messages', component: Messages, canActivate: [authGuard] },
   { path: 'profil', component: Profil, canActivate: [authGuard] },
 
