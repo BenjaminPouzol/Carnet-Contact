@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { EMPTY, Observable, catchError, tap } from 'rxjs';
-import { AuteurPublic, DemandeProfil, ReponseAuth, Utilisateur } from '../utilisateur.model';
+import { DemandeProfil, ReponseAuth, Utilisateur } from '../utilisateur.model';
 import { SessionService } from './session';
 import { contexte } from '../interceptors/http-contexte';
 
@@ -84,15 +84,5 @@ export class AuthService {
     ).pipe(
       tap(utilisateur => this.session.majUtilisateur(utilisateur))
     );
-  }
-
-  /**
-   * Les autres comptes, pour choisir un destinataire. Le serveur ne renvoie
-   * d'eux que leur forme publique : ni email, ni rôle.
-   */
-  autresUtilisateurs(): Observable<AuteurPublic[]> {
-    return this.http.get<AuteurPublic[]>('/api/utilisateurs', {
-      context: contexte({ libelle: 'Impossible de charger la liste des comptes' })
-    });
   }
 }
