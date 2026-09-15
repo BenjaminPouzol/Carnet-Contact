@@ -7,14 +7,17 @@ export interface Bandeau {
   id: number;
   titre: string;
   corps: string;
+  // La page qu'ouvre le bouton « Ouvrir » : la messagerie pour un message, la
+  // page Abonnements pour un nouvel abonné.
+  lien: string;
 }
 
 /** Durée d'affichage d'un bandeau avant disparition automatique. */
 const DUREE_BANDEAU_MS = 6000;
 
 /**
- * Prévient l'utilisateur qu'il se passe quelque chose — ici, l'arrivée d'un
- * message.
+ * Prévient l'utilisateur qu'il se passe quelque chose — l'arrivée d'un
+ * message, un nouvel abonné, une demande.
  *
  * Deux canaux, et pas un seul, parce qu'aucun ne suffit :
  *
@@ -81,26 +84,30 @@ export class NotificationService {
    * onglet actif, fenêtre réduite). C'est ce qui permet de ne PAS déclencher
    * une notification système quand l'utilisateur a justement la page sous les
    * yeux — elle serait redondante et agaçante.
+   *
+   * `lien` a une valeur par défaut : les appels écrits pour la messagerie, avant
+   * les abonnements, n'ont pas eu à changer.
    */
-  notifier(titre: string, corps: string): void {
+  notifier(titre: string, corps: string, lien = '/messages'): void {
     if (!this.navigateur) {
       return;
     }
 
     if (this.permissionSignal() === 'granted' && document.hidden) {
-      this.notificationSysteme(titre, corps);
+      this.notificationSysteme(titre, corps, lien);
     } else {
-      this.ajouterBandeau(titre, corps);
+      this.ajouterBandeau(titre, corps, lien);
     }
   }
 
-  private notificationSysteme(titre: string, corps: string): void {
+  private notificationSysteme(titre: string, corps: string, lien: string): void {
     const notification = new Notification(titre, {
       body: corps,
       // tag : les notifications partageant un tag se REMPLACENT au lieu de
       // s'empiler. Sans lui, dix messages reçus pendant une absence
-      // produiraient dix bulles superposées.
-      tag: 'carnet-message',
+      // produiraient dix bulles superposées. Un tag par sorte d'événement :
+      // un nouvel abonné ne doit pas faire disparaître l'annonce d'un message.
+      tag: lien === '/messages' ? 'carnet-message' : 'carnet-activite',
       icon: '/favicon.ico'
     });
 
@@ -108,15 +115,15 @@ export class NotificationService {
       // Ramener la fenêtre au premier plan : cliquer sur une notification sans
       // que rien ne s'affiche serait déroutant.
       window.focus();
-      this.router.navigate(['/messages']);
+      this.router.navigateByUrl(lien);
       notification.close();
     };
   }
 
-  private ajouterBandeau(titre: string, corps: string): void {
+  private ajouterBandeau(titre: string, corps: string, lien: string): void {
     const id = this.prochainId++;
 
-    this.bandeauxSignal.update(liste => [...liste, { id, titre, corps }]);
+    this.bandeauxSignal.update(liste => [...liste, { id, titre, corps, lien }]);
 
     // Disparition automatique : un bandeau informe, il n'a pas à rester à
     // l'écran jusqu'à ce qu'on le ferme.

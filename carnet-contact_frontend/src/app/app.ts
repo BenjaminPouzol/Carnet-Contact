@@ -5,6 +5,7 @@ import { AuthService } from './services/auth';
 import { MessageService } from './services/message';
 import { NotificationService } from './services/notification';
 import { ThemeService } from './services/theme';
+import { ActiviteService } from './services/activite';
 
 @Component({
   selector: 'app-root',
@@ -18,6 +19,7 @@ export class App {
   protected etatHttp = inject(EtatHttpService);
   protected auth = inject(AuthService);
   protected messages = inject(MessageService);
+  protected activite = inject(ActiviteService);
   protected notifications = inject(NotificationService);
   protected theme = inject(ThemeService);
 
@@ -33,11 +35,17 @@ export class App {
     // est le plus important : sans lui, le sondage continuerait après la
     // déconnexion, avec un jeton devenu invalide — donc un 401 toutes les
     // quinze secondes.
+    //
+    // Les notifications d'abonnement suivent exactement le même cycle de vie :
+    // elles se rangent dans le même effect(), plutôt que dans un second qui
+    // pourrait un jour s'en écarter.
     effect(() => {
       if (this.auth.connecte()) {
         this.messages.demarrerSuiviNonLus();
+        this.activite.demarrerSuivi();
       } else {
         this.messages.arreterSuiviNonLus();
+        this.activite.arreterSuivi();
       }
     });
   }

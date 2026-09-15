@@ -5,6 +5,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { App } from './app';
 import { SessionService } from './services/session';
 import { MessageService } from './services/message';
+import { ActiviteService } from './services/activite';
 import { EtatHttpService } from './services/etat-http';
 import { unUtilisateur } from './donnees-test';
 
@@ -43,9 +44,10 @@ describe('App', () => {
   });
 
   afterEach(() => {
-    // Le suivi périodique des non-lus est un timer : sans arrêt explicite, il
-    // continuerait de tourner d'un test à l'autre.
+    // Les deux suivis périodiques sont des timers : sans arrêt explicite, ils
+    // continueraient de tourner d'un test à l'autre.
     TestBed.inject(MessageService).arreterSuiviNonLus();
+    TestBed.inject(ActiviteService).arreterSuivi();
   });
 
   it('masque la navigation tant que personne n\'est connecté', async () => {
@@ -63,14 +65,17 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
 
-    // Se connecter démarre le suivi des non-lus : la requête part, on y répond.
+    // Se connecter démarre les deux suivis : messages non lus et notifications
+    // d'abonnement. Les deux requêtes partent, on répond à chacune.
     await rendreLaMain();
     backend.expectOne('/api/messages/non-lus').flush([]);
+    backend.expectOne('/api/notifications/non-lues').flush([]);
     await fixture.whenStable();
 
     const html = fixture.nativeElement as HTMLElement;
     expect(html.querySelector('nav')).not.toBeNull();
     expect(html.textContent).toContain('Alice');
+    expect(html.textContent).toContain('Abonnements');
   });
 
   it('affiche la bannière d\'erreur alimentée par l\'intercepteur', async () => {
