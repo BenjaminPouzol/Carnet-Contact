@@ -57,3 +57,13 @@ export const RESEAUX = [
 // Le type « une des six clés » : 'instagram' | 'twitter' | ... Déduit du
 // tableau ci-dessus, donc toujours à jour.
 export type CleReseau = typeof RESEAUX[number]['cle'];
+
+/**
+ * « Un objet qui porte tout ou partie des six champs de réseaux » : un Contact,
+ * son propre compte, ou les coordonnées professionnelles d'une personne suivie.
+ *
+ * `Record<CleReseau, …>` fabrique un type à six propriétés à partir des clés ;
+ * `Partial` les rend facultatives. Le composant d'affichage des réseaux n'exige
+ * rien de plus — il n'a donc plus besoin d'un Contact entier.
+ */
+export type ReseauxRenseignes = Partial<Record<CleReseau, string | null>>;

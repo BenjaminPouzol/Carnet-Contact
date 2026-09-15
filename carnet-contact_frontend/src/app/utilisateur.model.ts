@@ -1,3 +1,5 @@
+import { ReseauxRenseignes } from './contact.model';
+
 /**
  * Les deux rôles, écrits exactement comme l'enum Java les sérialise.
  *
@@ -7,7 +9,14 @@
  */
 export type Role = 'UTILISATEUR' | 'ADMIN';
 
-export interface Utilisateur {
+/**
+ * Son propre compte, tel que le renvoie /api/utilisateurs/moi.
+ *
+ * `extends ReseauxRenseignes` : le compte porte les six mêmes champs de réseaux
+ * qu'un contact, ce qui permet de lui passer directement le composant
+ * d'affichage des réseaux.
+ */
+export interface Utilisateur extends ReseauxRenseignes {
   id: number;
   email: string;
   nomAffichage: string;
@@ -15,6 +24,9 @@ export interface Utilisateur {
   role: Role;
   actif: boolean;
   dateInscription?: string | null;
+  // Montrés à ceux qui me suivent — contrairement à `email`, jamais montré.
+  emailPro?: string | null;
+  comptePrive: boolean;
 }
 
 /**

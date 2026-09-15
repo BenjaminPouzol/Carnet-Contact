@@ -2,6 +2,7 @@ import { Message } from './message.model';
 import { ReactionResume } from './reaction.model';
 import { AuteurPublic, Role, Utilisateur } from './utilisateur.model';
 import { Publication } from './publication.model';
+import { CompteResume, NotificationCompte, ProfilPublic } from './abonnement.model';
 
 /**
  * Fabriques d'objets pour les tests.
@@ -28,6 +29,9 @@ export function unUtilisateur(modifications: Partial<Utilisateur> = {}): Utilisa
     nomAffichage: 'Alice',
     role: 'UTILISATEUR' as Role,
     actif: true,
+    // Ajouté avec les abonnements : la fabrique en a profité exactement comme
+    // prévu — une ligne ici, aucun fichier de test à reprendre.
+    comptePrive: false,
     ...modifications
   };
 }
@@ -66,6 +70,48 @@ export function unePublication(modifications: Partial<Publication> = {}): Public
     reactions: [],
     modifiable: false,
     supprimable: false,
+    ...modifications
+  };
+}
+
+/** Un compte dans une liste de recherche ou d'abonnements. */
+export function unCompte(modifications: Partial<CompteResume> = {}): CompteResume {
+  return {
+    id: 2,
+    nomAffichage: 'Bob',
+    photoUrl: null,
+    comptePrive: false,
+    statut: 'AUCUN',
+    ilMeSuit: false,
+    ...modifications
+  };
+}
+
+/** Le profil public d'une personne, par défaut non suivie. */
+export function unProfil(modifications: Partial<ProfilPublic> = {}): ProfilPublic {
+  return {
+    id: 2,
+    nomAffichage: 'Bob',
+    photoUrl: null,
+    comptePrive: false,
+    statut: 'AUCUN',
+    ilMeSuit: false,
+    nombreAbonnes: 0,
+    nombreAbonnements: 0,
+    contenuVisible: true,
+    peutEcrire: false,
+    coordonnees: null,
+    ...modifications
+  };
+}
+
+export function uneNotification(modifications: Partial<NotificationCompte> = {}): NotificationCompte {
+  return {
+    id: 1,
+    type: 'NOUVEL_ABONNE',
+    acteur: unAuteur({ id: 3, nomAffichage: 'Alice' }),
+    date: '2026-09-15T10:00:00Z',
+    lue: false,
     ...modifications
   };
 }
