@@ -7,6 +7,7 @@ import { Messages } from './pages/messages/messages';
 import { Profil } from './pages/profil/profil';
 import { Fil } from './pages/fil/fil';
 import { Personne } from './pages/personne/personne';
+import { Abonnements } from './pages/abonnements/abonnements';
 import { authGuard } from './auth-guard';
 import { adminGuard } from './admin-guard';
 
@@ -23,6 +24,11 @@ export const routes: Routes = [
   { path: 'fil', component: Fil, canActivate: [authGuard] },
   { path: 'contact/:id', component: ContactDetail, canActivate: [authGuard] },
   { path: 'contact/:id/modifier', component: ContactEdit, canActivate: [authGuard] },
+
+  // Les abonnements : une entrée à part dans la navigation, distincte des
+  // contacts. Chargée avec le reste, comme le fil : on y revient souvent, ne
+  // serait-ce que pour la pastille des notifications.
+  { path: 'abonnements', component: Abonnements, canActivate: [authGuard] },
 
   // La page d'une personne (un COMPTE de l'application), à ne pas confondre
   // avec contact/:id (une fiche de son carnet privé). On y arrive depuis le fil,

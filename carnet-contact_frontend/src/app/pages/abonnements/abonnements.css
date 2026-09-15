@@ -1,0 +1,86 @@
+:host {
+  display: grid;
+  gap: 1rem;
+}
+
+.entete-page h2 {
+  margin-bottom: 0.25rem;
+}
+
+.entete-page p {
+  margin: 0;
+}
+
+.bloc h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+/* Le nombre d'éléments à côté du titre : une information d'appoint, discrète. */
+.nombre {
+  padding: 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--texte-doux);
+  background: var(--bulle-recue);
+  border-radius: 999px;
+}
+
+.sous-titre {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.9rem;
+  color: var(--texte-doux);
+}
+
+.aide {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* Les demandes attendent une réponse : un liseré les signale sans alarmer. */
+.bloc-demandes {
+  border-top: 4px solid var(--bleu);
+}
+
+.champ-recherche {
+  margin-bottom: 0.5rem;
+}
+
+.en-commun {
+  font-size: 0.8rem;
+}
+
+.liste-notifications {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.liste-notifications li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--rayon-petit);
+}
+
+.liste-notifications li.non-lue {
+  font-weight: 600;
+  background: var(--bleu-pale);
+}
+
+.liste-notifications a {
+  color: inherit;
+}
+
+.liste-notifications time {
+  font-size: 0.8rem;
+  font-weight: 400;
+}
