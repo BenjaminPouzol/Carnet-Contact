@@ -1,7 +1,12 @@
 package com.example.carnet_contact_backend.controller;
 
+import com.example.carnet_contact_backend.model.Abonnement;
+import com.example.carnet_contact_backend.model.Blocage;
 import com.example.carnet_contact_backend.model.Role;
+import com.example.carnet_contact_backend.model.StatutAbonnement;
 import com.example.carnet_contact_backend.model.Utilisateur;
+import com.example.carnet_contact_backend.repository.AbonnementRepository;
+import com.example.carnet_contact_backend.repository.BlocageRepository;
 import com.example.carnet_contact_backend.repository.UtilisateurRepository;
 import com.example.carnet_contact_backend.security.JwtService;
 import com.jayway.jsonpath.JsonPath;
@@ -13,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -21,7 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * Messagerie : accusé de lecture et réactions.
+ * Messagerie : accusé de lecture, réactions, et qui peut écrire à qui.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -33,6 +39,12 @@ class MessageControllerTest {
 
     @Autowired
     private UtilisateurRepository utilisateurRepository;
+
+    @Autowired
+    private AbonnementRepository abonnementRepository;
+
+    @Autowired
+    private BlocageRepository blocageRepository;
 
     @Autowired
     private JwtService jwtService;
@@ -53,6 +65,13 @@ class MessageControllerTest {
         jetonAlice = jwtService.genererJeton(alice.getEmail(), Role.UTILISATEUR);
         jetonBob = jwtService.genererJeton(bob.getEmail(), Role.UTILISATEUR);
         jetonCarol = jwtService.genererJeton(carol.getEmail(), Role.UTILISATEUR);
+
+        // Depuis les abonnements, on n'écrit qu'aux comptes qu'on suit. Alice et
+        // Bob se suivent : les tests d'accusé de lecture et de réactions, qui les
+        // font dialoguer, gardent ainsi exactement leur sens. Carol ne suit
+        // personne — c'est elle qui sert aux nouvelles règles.
+        suit(alice, bob, StatutAbonnement.ACCEPTE);
+        suit(bob, alice, StatutAbonnement.ACCEPTE);
     }
 
     private Utilisateur creer(String email) {
@@ -64,14 +83,36 @@ class MessageControllerTest {
         return utilisateurRepository.save(u);
     }
 
+    private void suit(Utilisateur abonne, Utilisateur suivi, StatutAbonnement statut) {
+        Abonnement abonnement = new Abonnement();
+        abonnement.setAbonne(abonne);
+        abonnement.setSuivi(suivi);
+        abonnement.setStatut(statut);
+        abonnement.setDateDemande(Instant.now());
+        abonnementRepository.save(abonnement);
+    }
+
+    private void bloque(Utilisateur bloqueur, Utilisateur bloque) {
+        Blocage blocage = new Blocage();
+        blocage.setBloqueur(bloqueur);
+        blocage.setBloque(bloque);
+        blocage.setDateBlocage(Instant.now());
+        blocageRepository.save(blocage);
+    }
+
+    /** Tente un envoi, sans présumer du résultat : les nouveaux tests vérifient le refus. */
+    private ResultActions tenterEnvoi(String jetonExpediteur, Long destinataireId, String contenu) throws Exception {
+        return mockMvc.perform(post("/api/messages")
+                .header("Authorization", "Bearer " + jetonExpediteur)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"destinataireId":%d,"contenu":"%s"}
+                        """.formatted(destinataireId, contenu)));
+    }
+
     /** Envoie un message et rend son identifiant. */
     private Long envoyer(String jetonExpediteur, Long destinataireId, String contenu) throws Exception {
-        String corps = mockMvc.perform(post("/api/messages")
-                        .header("Authorization", "Bearer " + jetonExpediteur)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"destinataireId":%d,"contenu":"%s"}
-                                """.formatted(destinataireId, contenu)))
+        String corps = tenterEnvoi(jetonExpediteur, destinataireId, contenu)
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 
@@ -258,7 +299,7 @@ class MessageControllerTest {
     }
 
     @Test
-    @DisplayName("La liste des interlocuteurs n'expose pas les emails")
+    @DisplayName("La liste des comptes n'expose pas les emails")
     void listeDesComptes_sansEmail() throws Exception {
         mockMvc.perform(get("/api/utilisateurs")
                         .header("Authorization", "Bearer " + jetonAlice))
@@ -288,5 +329,98 @@ class MessageControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"contenu\":\"Bonjour\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    // --- Qui peut écrire à qui ----------------------------------------------
+
+    /**
+     * La règle de la demande initiale : suivre quelqu'un donne le droit de lui
+     * écrire. Sans abonnement, pas de message. 403 et non 404 : le compte d'Alice
+     * existe et se trouve par la recherche, prétendre le contraire serait faux.
+     */
+    @Test
+    @DisplayName("Écrire à quelqu'un qu'on ne suit pas est refusé (403)")
+    void ecrireSansSuivre_renvoie403() throws Exception {
+        tenterEnvoi(jetonCarol, alice.getId(), "Bonjour")
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Une fois qu'on suit la personne, on peut lui écrire")
+    void ecrireApresAvoirSuivi_autorise() throws Exception {
+        suit(carol, alice, StatutAbonnement.ACCEPTE);
+
+        tenterEnvoi(jetonCarol, alice.getId(), "Bonjour")
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Une demande encore en attente ne donne pas le droit d'écrire")
+    void demandeEnAttente_neSuffitPas() throws Exception {
+        suit(carol, alice, StatutAbonnement.EN_ATTENTE);
+
+        tenterEnvoi(jetonCarol, alice.getId(), "Bonjour")
+                .andExpect(status().isForbidden());
+    }
+
+    /**
+     * Sans cette exception, Alice pourrait écrire à Carol, qui n'aurait aucun
+     * moyen de lui répondre tant qu'elle ne la suit pas.
+     */
+    @Test
+    @DisplayName("On peut toujours répondre à quelqu'un qui nous a écrit")
+    void repondreAQuiNousAEcrit_autorise() throws Exception {
+        suit(alice, carol, StatutAbonnement.ACCEPTE);
+        envoyer(jetonAlice, carol.getId(), "Bonjour Carol");
+
+        tenterEnvoi(jetonCarol, alice.getId(), "Bonjour Alice")
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Les interlocuteurs : les comptes suivis et les conversations existantes, sans email")
+    void interlocuteurs() throws Exception {
+        Utilisateur dave = creer("dave@exemple.fr");
+        // Carol a écrit à Alice (elle la suit) ; Alice ne suit pas Carol.
+        suit(carol, alice, StatutAbonnement.ACCEPTE);
+        envoyer(jetonCarol, alice.getId(), "Bonjour");
+        // Une demande en attente vers Dave ne fait pas de lui un interlocuteur.
+        suit(alice, dave, StatutAbonnement.EN_ATTENTE);
+
+        mockMvc.perform(get("/api/messages/interlocuteurs")
+                        .header("Authorization", "Bearer " + jetonAlice))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                // Bob : Alice le suit.
+                .andExpect(jsonPath("$[?(@.compte.id == %d)].peutEcrire".formatted(bob.getId())).value(true))
+                // Carol : Alice ne la suit pas, mais Carol lui a écrit.
+                .andExpect(jsonPath("$[?(@.compte.id == %d)].peutEcrire".formatted(carol.getId())).value(true))
+                .andExpect(jsonPath("$[*].compte.email").isEmpty());
+    }
+
+    @Test
+    @DisplayName("Un blocage coupe la messagerie et retire le compte des interlocuteurs")
+    void blocage_couteLaMessagerie() throws Exception {
+        bloque(bob, alice);
+
+        // Alice suit toujours Bob en base... mais le blocage l'emporte.
+        tenterEnvoi(jetonAlice, bob.getId(), "Bonjour")
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/messages/interlocuteurs")
+                        .header("Authorization", "Bearer " + jetonAlice))
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    /** Sinon la pastille compterait des messages d'une conversation qu'on ne peut plus ouvrir. */
+    @Test
+    @DisplayName("Les non-lus d'un compte bloqué ne sont plus comptés")
+    void nonLus_excluentLesComptesBloques() throws Exception {
+        envoyer(jetonBob, alice.getId(), "Bonjour");
+        bloque(alice, bob);
+
+        mockMvc.perform(get("/api/messages/non-lus")
+                        .header("Authorization", "Bearer " + jetonAlice))
+                .andExpect(jsonPath("$.length()").value(0));
     }
 }

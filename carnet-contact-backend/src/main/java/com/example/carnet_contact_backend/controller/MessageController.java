@@ -1,5 +1,7 @@
 package com.example.carnet_contact_backend.controller;
 
+import com.example.carnet_contact_backend.abonnement.Relations;
+import com.example.carnet_contact_backend.abonnement.VueRelations;
 import com.example.carnet_contact_backend.controller.Reactions.ReactionResume;
 import com.example.carnet_contact_backend.model.Message;
 import com.example.carnet_contact_backend.model.Reaction;
@@ -18,11 +20,18 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Messagerie interne : les comptes de l'application s'écrivent entre eux.
+ *
+ * Depuis les abonnements, on n'écrit qu'aux comptes qu'on suit — ou à ceux qui
+ * nous ont déjà écrit. La règle elle-même vit dans VueRelations.peutEcrire ;
+ * ce contrôleur se contente de l'appliquer.
  */
 @RestController
 @RequestMapping("/api/messages")
@@ -31,14 +40,17 @@ public class MessageController {
     private final MessageRepository messageRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final ReactionRepository reactionRepository;
+    private final Relations relations;
 
     public MessageController(
             MessageRepository messageRepository,
             UtilisateurRepository utilisateurRepository,
-            ReactionRepository reactionRepository) {
+            ReactionRepository reactionRepository,
+            Relations relations) {
         this.messageRepository = messageRepository;
         this.utilisateurRepository = utilisateurRepository;
         this.reactionRepository = reactionRepository;
+        this.relations = relations;
     }
 
     /**
@@ -78,6 +90,14 @@ public class MessageController {
             Instant dateEnvoi,
             boolean lu,
             List<ReactionResume> reactions) {}
+
+    /**
+     * Une personne de la colonne « Conversations ».
+     *
+     * `peutEcrire` est calculé ici, pour que le client sache s'il doit afficher
+     * la zone de saisie ou une explication — sans connaître la règle.
+     */
+    public record Interlocuteur(AuteurPublic compte, boolean peutEcrire) {}
 
     private Utilisateur utilisateurConnecte(String email) {
         return utilisateurRepository.findByEmail(email)
@@ -119,6 +139,36 @@ public class MessageController {
     }
 
     /**
+     * Les personnes à afficher dans la messagerie : celles que je suis, et
+     * celles avec qui une conversation existe déjà (qu'on puisse encore leur
+     * écrire ou non — un historique ne disparaît pas parce qu'on a cessé de
+     * suivre quelqu'un).
+     *
+     * Ce chemin littéral est préféré par Spring au motif `/{autreId}` déclaré
+     * plus bas : sans cette route, « interlocuteurs » tombait sur `/{autreId}`
+     * et ressortait en 400, faute de pouvoir être converti en nombre.
+     *
+     * Les comptes sont chargés en une requête (findAllById) et la vue une fois :
+     * aucune requête par personne affichée.
+     */
+    @GetMapping("/interlocuteurs")
+    public List<Interlocuteur> interlocuteurs(@AuthenticationPrincipal String email) {
+        Utilisateur moi = utilisateurConnecte(email);
+        VueRelations vue = relations.vuePour(moi);
+
+        Set<Long> ids = new HashSet<>(vue.suivisAcceptes());
+        ids.addAll(messageRepository.idsQuiMOntEcrit(moi.getId()));
+        ids.addAll(messageRepository.idsAQuiJAiEcrit(moi.getId()));
+        ids.remove(moi.getId());
+
+        return utilisateurRepository.findAllById(ids).stream()
+                .filter(u -> u.isActif() && !vue.bloque(u.getId()))
+                .sorted(Comparator.comparing(Utilisateur::getNomAffichage, String.CASE_INSENSITIVE_ORDER))
+                .map(u -> new Interlocuteur(AuteurPublic.de(u), vue.peutEcrire(u.getId())))
+                .toList();
+    }
+
+    /**
      * Le fil complet avec un interlocuteur. L'ouverture du fil marque au
      * passage comme lus les messages reçus de cette personne.
      */
@@ -138,6 +188,15 @@ public class MessageController {
         return assembler(messageRepository.conversation(moi.getId(), autreId), moi.getId());
     }
 
+    /**
+     * Envoyer un message.
+     *
+     * 404 pour un destinataire inconnu, puis 403 si la règle d'écriture n'est
+     * pas remplie. 403 et non 404 dans ce second cas : le compte existe et se
+     * trouve par la recherche, prétendre qu'il est introuvable serait faux. Le
+     * client, lui, n'affiche de toute façon pas de zone de saisie quand
+     * `peutEcrire` est faux — ce refus protège contre un appel direct à l'API.
+     */
     @PostMapping
     public MessageVu envoyer(
             @Valid @RequestBody DemandeMessage demande,
@@ -146,6 +205,11 @@ public class MessageController {
         Utilisateur destinataire = utilisateurRepository.findById(demande.destinataireId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Destinataire inconnu."));
+
+        if (!relations.vuePour(expediteur).peutEcrire(destinataire.getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Suivez cette personne pour lui écrire.");
+        }
 
         Message message = new Message();
         // L'expéditeur vient du jeton, jamais du corps de la requête : on ne
@@ -161,12 +225,23 @@ public class MessageController {
         return vue(messageRepository.save(message), List.of());
     }
 
-    /** Tous les messages reçus non lus, pour la pastille du menu. */
+    /**
+     * Tous les messages reçus non lus, pour la pastille du menu.
+     *
+     * Ceux d'un compte en relation de blocage sont écartés : la pastille
+     * compterait sinon des messages d'une conversation qui n'apparaît plus dans
+     * la liste des interlocuteurs.
+     */
     @GetMapping("/non-lus")
     public List<MessageVu> nonLus(@AuthenticationPrincipal String email) {
         Utilisateur moi = utilisateurConnecte(email);
+        VueRelations vue = relations.vuePour(moi);
+
         return assembler(
-                messageRepository.findByDestinataireIdAndLuFalse(moi.getId()), moi.getId());
+                messageRepository.findByDestinataireIdAndLuFalse(moi.getId()).stream()
+                        .filter(m -> !vue.bloque(m.getExpediteur().getId()))
+                        .toList(),
+                moi.getId());
     }
 
     /**
