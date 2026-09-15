@@ -46,11 +46,13 @@
               <p class="erreur-champ">Format d'adresse invalide.</p>
             }
           </div>
-          <div>
-            <label for="photoUrl">Photo (URL)</label>
-            <input pInputText id="photoUrl" formControlName="photoUrl"
-                   placeholder="https://exemple.fr/jean.jpg" />
-          </div>
+          <!-- Adresse collée ou image envoyée : le formulaire ne reçoit
+               qu'une adresse dans les deux cas. -->
+          <app-champ-image
+            identifiant="photoUrl"
+            libelle="Photo"
+            placeholder="https://exemple.fr/jean.jpg"
+            [controle]="contactForm.controls.photoUrl" />
         </div>
 
         <h3 class="titre-reseaux">Réseaux sociaux</h3>

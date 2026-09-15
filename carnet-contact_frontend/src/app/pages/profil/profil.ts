@@ -5,10 +5,11 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AuthService } from '../../services/auth';
 import { EtatHttpService } from '../../services/etat-http';
 import { NotificationService } from '../../services/notification';
+import { ChampImage } from '../../components/champ-image/champ-image';
 
 @Component({
   selector: 'app-profil',
-  imports: [ReactiveFormsModule, ButtonModule, InputTextModule],
+  imports: [ReactiveFormsModule, ButtonModule, InputTextModule, ChampImage],
   templateUrl: './profil.html',
   styleUrl: './profil.css'
 })

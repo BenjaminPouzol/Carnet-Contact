@@ -25,11 +25,13 @@
   </div>
 
   <div>
-    <label [for]="'image-' + numero">Image (adresse, facultative)</label>
-    <input
-      [id]="'image-' + numero"
-      formControlName="imageUrl"
-      placeholder="https://exemple.fr/photo.jpg" />
+    <!-- identifiant numéroté, comme les autres champs : plusieurs formulaires
+         de publication peuvent coexister sur la page. -->
+    <app-champ-image
+      [identifiant]="'image-' + numero"
+      libelle="Image (adresse ou fichier, facultative)"
+      placeholder="https://exemple.fr/photo.jpg"
+      [controle]="formulaire.controls.imageUrl" />
     @if (formulaire.controls.imageUrl.invalid && formulaire.controls.imageUrl.touched) {
       <p class="erreur-champ">L'adresse doit commencer par http:// ou https://.</p>
     }

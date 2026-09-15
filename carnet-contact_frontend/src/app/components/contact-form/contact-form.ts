@@ -4,10 +4,11 @@ import { Component, inject, output, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { EtatHttpService } from '../../services/etat-http';
 import { Contact, RESEAUX } from '../../contact.model';
+import { ChampImage } from '../champ-image/champ-image';
 
 @Component({
   selector: 'app-contact-form',
-  imports: [ReactiveFormsModule, ButtonModule, InputTextModule],
+  imports: [ReactiveFormsModule, ButtonModule, InputTextModule, ChampImage],
   templateUrl: './contact-form.html',
   styleUrl: './contact-form.css'
 })

@@ -12,7 +12,7 @@
         {{ (utilisateur()?.nomAffichage || '?').charAt(0).toUpperCase() }}
       </span>
     }
-    <p class="muet aide">Collez l'adresse d'une image en ligne.</p>
+    <p class="muet aide">Collez une adresse, ou choisissez une image sur votre appareil.</p>
   </div>
 
   <form [formGroup]="formulaire" (ngSubmit)="onSubmit()" class="formulaire-profil">
@@ -21,10 +21,14 @@
       <input pInputText id="nomAffichage" formControlName="nomAffichage" placeholder="Votre nom" />
     </div>
 
-    <div class="champ">
-      <label for="photoUrl">Photo de profil (URL)</label>
-      <input pInputText id="photoUrl" formControlName="photoUrl" placeholder="https://exemple.fr/moi.jpg" />
-    </div>
+    <!-- L'aperçu ci-dessus lit la valeur du contrôle : une image envoyée
+         s'y affiche dès que son adresse arrive, sans rien de plus à écrire. -->
+    <app-champ-image
+      class="champ"
+      identifiant="photoUrl"
+      libelle="Photo de profil"
+      placeholder="https://exemple.fr/moi.jpg"
+      [controle]="formulaire.controls.photoUrl" />
 
     <p class="muet email-fixe">
       Email du compte : <strong>{{ utilisateur()?.email }}</strong>
