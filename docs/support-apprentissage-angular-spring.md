@@ -42,9 +42,10 @@ Document de référence détaillé, organisé par notion. Chaque section combine
 34. [Pagination par curseur](#34-pagination-par-curseur)
 35. [Fil d'actualité : catégories, droits et DTO public](#35-fil-dactualité--catégories-droits-et-dto-public)
 36. [Envoi de fichiers](#36-envoi-de-fichiers)
-37. [Backend Spring Boot](#37-backend-spring-boot)
-38. [Git et GitHub](#38-git-et-github)
-39. [Pense-bête de dépannage](#39-pense-bête-de-dépannage)
+37. [Relations entre comptes : abonnements, comptes privés et blocages](#37-relations-entre-comptes--abonnements-comptes-privés-et-blocages)
+38. [Backend Spring Boot](#38-backend-spring-boot)
+39. [Git et GitHub](#39-git-et-github)
+40. [Pense-bête de dépannage](#40-pense-bête-de-dépannage)
 
 ---
 
@@ -1690,7 +1691,7 @@ protected contactService = inject(ContactService);
 
 ### Pourquoi le POST met plus longtemps à signaler l'échec que le GET
 
-Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 37). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
+Serveur éteint : la bannière du `GET` (au chargement) apparaît presque instantanément, celle d'un `POST` d'ajout met quelques secondes. Ce n'est pas un bug du code. Un `POST` qui transporte du JSON est une requête « non anodine » : le navigateur envoie d'abord une requête `OPTIONS` de vérification (le *preflight*, section 38). Quand le serveur ne répond pas, le navigateur laisse ce preflight expirer avant de conclure à l'échec. Le `GET`, requête « simple », part directement et échoue tout de suite.
 
 ## 16. Indicateur de chargement (`finalize`)
 
@@ -3693,7 +3694,7 @@ class MonServiceTest {
 }
 ```
 
-L'injection par constructeur, adoptée en section 37 pour d'autres raisons, se révèle ici un avantage inattendu : elle permet de fabriquer l'objet avec **les valeurs qu'on veut**, y compris des valeurs impossibles autrement.
+L'injection par constructeur, adoptée en section 38 pour d'autres raisons, se révèle ici un avantage inattendu : elle permet de fabriquer l'objet avec **les valeurs qu'on veut**, y compris des valeurs impossibles autrement.
 
 ```java
 // Durée négative : le jeton naît déjà périmé. Impossible à obtenir en
@@ -5954,7 +5955,7 @@ Le défaut de la pagination numérotée est démontré par un test : `insertionE
 
 ## 35. Fil d'actualité : catégories, droits et DTO public
 
-Le fil d'actualité assemble surtout des notions déjà vues : une entité et son contrôleur (section 37), des réactions (section 32), un rôle d'administrateur (section 29), un service à signaux (section 12). Cette section rassemble ce qu'il a apporté de **neuf** — des questions qui ne se posaient pas tant que toutes les données étaient privées.
+Le fil d'actualité assemble surtout des notions déjà vues : une entité et son contrôleur (section 38), des réactions (section 32), un rôle d'administrateur (section 29), un service à signaux (section 12). Cette section rassemble ce qu'il a apporté de **neuf** — des questions qui ne se posaient pas tant que toutes les données étaient privées.
 
 ### Une liste fermée des deux côtés : enum Java et tableau `as const`
 
@@ -6672,7 +6673,647 @@ this.images.envoyer(fichier).pipe(
 
 ---
 
-## 37. Backend Spring Boot
+## 37. Relations entre comptes : abonnements, comptes privés et blocages
+
+Jusqu'ici, deux comptes ne se croisaient que par la messagerie, et tout ce qui était publié se lisait par tous. Pouvoir **suivre** quelqu'un crée une relation entre comptes — et avec elle une question qui traverse toute l'application : *qui a le droit de voir quoi ?* Le fil, la page d'une personne, la messagerie, la recherche et les suggestions doivent tous y répondre, et y répondre de la même façon.
+
+Les abonnements ne remplacent pas les contacts. Un contact est une fiche privée que l'on remplit soi-même, avec un téléphone et un email personnel ; un abonnement est un lien vers un vrai compte, qui en est prévenu et qui décide de ce qu'il montre. Suivre donne accès aux publications, à l'email professionnel, aux réseaux sociaux et à la messagerie — jamais à l'email de connexion.
+
+| Notion | Rôle |
+|---|---|
+| Abonnement | « A suit B » : une ligne par sens, la relation n'est pas réciproque |
+| Compte privé | Le suivre demande l'accord du titulaire ; ses publications ne sont lues que par ses abonnés |
+| Blocage | Coupe tout entre deux comptes, quel que soit celui qui a bloqué |
+| Notification | Garde la trace d'un événement : « X vous suit », « X demande à vous suivre », « X a accepté votre demande » |
+
+### Une relation qui porte des données : table de liaison et statut
+
+Les réactions (section 32) ont déjà montré l'entité de liaison écrite à la main. L'abonnement reprend ce modèle, avec deux traits nouveaux.
+
+La relation n'est **pas symétrique** : Alice peut suivre Bob sans que Bob suive Alice. Chaque sens est donc une ligne distincte, et la table porte deux références vers la même entité. Elle a surtout un **état** : un compte privé doit accepter avant que l'abonnement produise ses effets. Un `@ManyToMany` ne sait stocker qu'un couple d'identifiants ; dès qu'une relation porte un statut ou une date, elle devient une entité à part entière.
+
+Une **contrainte d'unicité** sur le couple complète le tableau. Vérifier « ce lien existe-t-il déjà ? » dans le contrôleur ne suffit pas : deux clics partis au même instant passent tous les deux la vérification avant que l'un n'ait écrit. La base, elle, refuse la seconde ligne quoi qu'il arrive.
+
+```java
+@Entity
+// Un couple (demandeur, cible) n'existe qu'une fois : la base le garantit,
+// meme si deux requetes arrivent au meme instant.
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"demandeur_id", "cible_id"}))
+public class Lien {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    // Deux references vers la MEME entite : chaque colonne est nommee (section 19).
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "demandeur_id")
+    private Compte demandeur;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "cible_id")
+    private Compte cible;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private StatutLien statut;          // EN_ATTENTE ou ACCEPTE
+
+    private Instant dateAcceptation;    // null tant que la demande attend
+}
+```
+
+| Élément | Rôle |
+|---|---|
+| `@UniqueConstraint(columnNames = {...})` | Un seul lien par couple, garanti par la base et non par le code |
+| `@Enumerated(EnumType.STRING)` | La base stocke `EN_ATTENTE`, pas un numéro : réordonner l'enum ne change pas le sens des lignes existantes |
+| `EN_ATTENTE` | Demande envoyée à un compte privé, sans aucun effet tant qu'elle n'est pas acceptée |
+| `ACCEPTE` | Abonnement effectif : publications, coordonnées, messagerie |
+
+Pourquoi le blocage n'est-il pas un troisième statut ? Parce qu'il n'a pas le même cycle de vie. On peut bloquer quelqu'un qu'on n'a jamais suivi, et bloquer **supprime** les abonnements entre les deux comptes : rangé dans la même ligne, le blocage disparaîtrait avec eux. Il vit donc dans sa propre table, `Blocage`.
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Abonnement.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/model/Abonnement.java) et la méthode `suivre` de [`controller/AbonnementController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/AbonnementController.java) : un compte public est suivi d'emblée, un compte privé reçoit une demande, et le compte visé est prévenu dans les deux cas.
+
+```java
+@Entity
+@Table(uniqueConstraints = @UniqueConstraint(
+        name = "uk_abonnement_couple", columnNames = {"abonne_id", "suivi_id"}))
+public class Abonnement {
+    // ...
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "abonne_id")
+    private Utilisateur abonne;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "suivi_id")
+    private Utilisateur suivi;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 12)
+    private StatutAbonnement statut;
+    // ...
+    // null tant que la demande attend l'accord d'un compte privé.
+    private Instant dateAcceptation;
+```
+
+```java
+if (vue.statut(id) == StatutRelation.AUCUN) {
+    StatutAbonnement statut = cible.isComptePrive() ? StatutAbonnement.EN_ATTENTE : StatutAbonnement.ACCEPTE;
+    // ...
+    abonnementRepository.save(abonnement);
+
+    notifications.notifier(cible, moi, statut == StatutAbonnement.ACCEPTE
+            ? TypeNotification.NOUVEL_ABONNE
+            : TypeNotification.DEMANDE_RECUE);
+    // ...
+}
+```
+
+Ce `if` rend la route **idempotente** (section 32) : rejouer `PUT /api/abonnements/{id}` ne crée ni seconde ligne ni seconde notification.
+
+### Des règles écrites une fois, des données chargées une fois
+
+Profil, fil, messagerie, recherche et suggestions posent tous les mêmes questions : « ce compte m'a-t-il bloqué ? », « est-ce que je le suis ? », « m'a-t-il déjà écrit ? ». Deux dangers guettent.
+
+Le premier est connu depuis les intercepteurs (section 17) : une règle recopiée dans cinq contrôleurs finit par diverger dans l'un d'eux. Le second est le problème N+1 (section 32) : une recherche qui affiche vingt comptes et pose trois questions par compte, chacune par une requête, coûte soixante allers-retours vers la base.
+
+La réponse tient en deux pièces. Un **chargeur** lit, pour le compte connecté, toutes ses relations sous forme d'ensembles d'identifiants — toujours le même nombre de requêtes, qu'on affiche un compte ou cinquante. Un **objet de règles** reçoit ces ensembles et répond à chaque question en mémoire. Cet objet ne dépend ni de Spring ni de la base : un test le construit à la main, en quelques lignes.
+
+```java
+// Un objet ORDINAIRE : ni Spring ni base. Un test le construit a la main.
+public final class Droits {
+
+    private final Long moi;
+    private final Set<Long> suivis;
+    private final Set<Long> bloques;
+
+    public Droits(Long moi, Set<Long> suivis, Set<Long> bloques) {
+        this.moi = moi;
+        this.suivis = Set.copyOf(suivis);     // copies immuables : la vue decrit un instant
+        this.bloques = Set.copyOf(bloques);
+    }
+
+    // Chaque regle se lit en memoire : aucune requete, quel que soit le nombre d'appels.
+    public boolean peutVoir(Long autre) {
+        return !bloques.contains(autre) && (moi.equals(autre) || suivis.contains(autre));
+    }
+}
+```
+
+```java
+@Service
+public class ChargeurDroits {
+
+    // Toujours le meme nombre de requetes, qu'on affiche un compte ou cinquante.
+    public Droits pour(Compte moi) {
+        return new Droits(
+                moi.getId(),
+                new HashSet<>(liens.idsSuivisPar(moi.getId())),
+                new HashSet<>(blocages.idsEnRelationAvec(moi.getId())));
+    }
+}
+```
+
+```java
+// Dans un controleur : UNE vue par requete, puis autant de questions qu'on veut.
+Droits droits = chargeur.pour(moi);
+return comptes.stream()
+        .map(c -> new Resume(c.getId(), c.getNom(), droits.peutVoir(c.getId())))
+        .toList();
+```
+
+| Règle de `VueRelations` | Vraie quand… |
+|---|---|
+| `voitContenu` | Aucun blocage, et : soi-même, compte public, abonnement accepté, ou administrateur |
+| `voitCoordonnees` | Aucun blocage, et : soi-même ou abonnement accepté — un compte public ne suffit pas |
+| `peutEcrire` | Pas soi-même, aucun blocage, et : abonnement accepté, ou la personne m'a déjà écrit |
+
+La dernière condition de `peutEcrire` évite une impasse : sans elle, quand Alice suit Bob et lui écrit, Bob ne pourrait pas répondre tant qu'il ne suit pas Alice.
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/abonnement/VueRelations.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/abonnement/VueRelations.java), couverte par les 15 cas de [`VueRelationsTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/abonnement/VueRelationsTest.java) (sans Spring), et [`abonnement/Relations.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/abonnement/Relations.java). Le rôle administrateur est lu sur le compte rechargé depuis la base, pas dans le jeton, qui peut dater d'avant une rétrogradation (section 29).
+
+```java
+public boolean voitCoordonnees(Long autreId) {
+    return !bloque(autreId) && (estMoi(autreId) || suit(autreId));
+}
+
+public boolean peutEcrire(Long autreId) {
+    return !estMoi(autreId)
+            && !bloque(autreId)
+            && (suit(autreId) || mOntEcrit.contains(autreId));
+}
+```
+
+```java
+public VueRelations vuePour(Utilisateur moi) {
+    Long id = moi.getId();
+
+    Map<Long, StatutAbonnement> sortants = new HashMap<>();
+    for (Object[] ligne : abonnementRepository.statutsSortants(id)) {
+        sortants.put((Long) ligne[0], (StatutAbonnement) ligne[1]);
+    }
+
+    Set<Long> abonnesAcceptes = new HashSet<>(
+            abonnementRepository.idsAbonnes(id, StatutAbonnement.ACCEPTE));
+
+    Set<Long> mOntEcrit = new HashSet<>(messageRepository.idsQuiMOntEcrit(id));
+
+    // Les deux sens réunis : pour les règles, peu importe qui a bloqué qui.
+    Set<Long> bloques = new HashSet<>(blocageRepository.idsBloquesPar(id));
+    bloques.addAll(blocageRepository.idsQuiOntBloque(id));
+
+    return new VueRelations(
+            id, moi.getRole() == Role.ADMIN, sortants, abonnesAcceptes, mOntEcrit, bloques);
+}
+```
+
+### La même règle en Java et en JPQL
+
+Le fil est découpé par curseur (section 34) : « les dix publications plus anciennes que celle-ci ». Si la requête renvoyait dix lignes et que Java retirait ensuite celles d'un compte privé, la tranche pourrait revenir avec trois publications — et le client, en recevant moins de dix, conclurait à tort qu'il n'y a plus rien à charger.
+
+Le filtre doit donc agir **dans** la requête, là où les lignes sont comptées. La règle `voitContenu` existe ainsi deux fois : en Java pour ce qui concerne un compte isolé (la page d'une personne), en JPQL pour ce que la base découpe (le fil). C'est une duplication assumée, et les tests couvrent les mêmes situations des deux côtés — compte privé, blocage dans chaque sens, administrateur — pour qu'un écart se voie.
+
+```java
+@Query("""
+        SELECT p FROM Article p
+        JOIN FETCH p.auteur a
+        WHERE (:avant IS NULL OR p.id < :avant)
+          AND NOT EXISTS (
+                SELECT b.id FROM Blocage b
+                WHERE (b.bloqueur.id = :moi AND b.bloque.id = a.id)
+                   OR (b.bloqueur.id = a.id AND b.bloque.id = :moi))
+          AND (a.prive = false OR a.id = :moi OR EXISTS (
+                SELECT l.id FROM Lien l
+                WHERE l.demandeur.id = :moi AND l.cible.id = a.id AND l.statut = :accepte))
+        ORDER BY p.id DESC
+        """)
+// Pas de commentaire DANS le texte de la requete : « -- » n'est pas du JPQL.
+List<Article> tranche(@Param("avant") Long avant, @Param("moi") Long moi,
+                      @Param("accepte") StatutLien accepte, Pageable limite);
+```
+
+`EXISTS` plutôt qu'une jointure : joindre les abonnements renverrait la même publication une fois par ligne correspondante, alors qu'`EXISTS` ne pose qu'une question oui / non.
+
+| Java (`VueRelations`) | JPQL (`PublicationRepository.fil`) |
+|---|---|
+| `bloque(auteurId)` | `NOT EXISTS (SELECT b.id FROM Blocage b WHERE …)`, dans les deux sens |
+| `estMoi(auteurId) \|\| !auteurPrive \|\| admin` | `a.comptePrive = false OR a.id = :moi OR :admin = true` |
+| `suit(auteurId)` | `EXISTS (SELECT ab2.id FROM Abonnement ab2 WHERE … AND ab2.statut = :accepte)` |
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/PublicationRepository.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/PublicationRepository.java), testé dans [`PublicationControllerTest.java`](../carnet-contact-backend/src/test/java/com/example/carnet_contact_backend/controller/PublicationControllerTest.java)
+
+```java
+@Query("""
+        SELECT p FROM Publication p
+        JOIN FETCH p.auteur a
+        WHERE (:categorie IS NULL OR p.categorie = :categorie)
+          AND (:avant IS NULL OR p.id < :avant)
+          AND (:auteurId IS NULL OR a.id = :auteurId)
+          AND (:seulementAbonnements = false OR EXISTS (
+                SELECT ab.id FROM Abonnement ab
+                WHERE ab.abonne.id = :moi AND ab.suivi.id = a.id AND ab.statut = :accepte))
+          AND NOT EXISTS (
+                SELECT b.id FROM Blocage b
+                WHERE (b.bloqueur.id = :moi AND b.bloque.id = a.id)
+                   OR (b.bloqueur.id = a.id AND b.bloque.id = :moi))
+          AND (a.comptePrive = false OR a.id = :moi OR :admin = true OR EXISTS (
+                SELECT ab2.id FROM Abonnement ab2
+                WHERE ab2.abonne.id = :moi AND ab2.suivi.id = a.id AND ab2.statut = :accepte))
+        ORDER BY p.id DESC
+        """)
+```
+
+### Ce que le client reçoit : un champ absent plutôt que caché
+
+La section 35 a posé la liste blanche (un DTO qui n'énumère que ce qu'on peut montrer) et la différence entre 403 et 404. Les abonnements ajoutent une nuance : une partie de la réponse dépend de **qui regarde**.
+
+Le serveur pourrait envoyer l'email professionnel à tout le monde et laisser Angular le masquer aux non-abonnés. Mais une donnée masquée par le client a quand même été reçue : elle se lit dans l'onglet Réseau. Le serveur envoie donc `null` à qui n'y a pas droit. L'email de connexion va plus loin : il ne figure dans **aucun** objet destiné aux autres, si bien qu'aucune règle oubliée ne peut l'exposer.
+
+```java
+// Ce que voient les abonnes. L'email de connexion n'y figure pas : il n'existe
+// dans aucun objet montre aux autres, aucune regle ne peut donc l'exposer.
+public record Coordonnees(String emailPro, String linkedin) {}
+
+public record Profil(
+        Long id,
+        String nom,
+        boolean peutEcrire,          // calcule pour CELUI QUI REGARDE
+        Coordonnees coordonnees) {}  // null sans le droit : rien a cacher cote client
+
+Profil vue(Compte cible, Droits droits) {
+    return new Profil(
+            cible.getId(),
+            cible.getNom(),
+            droits.peutEcrire(cible.getId()),
+            droits.voitCoordonnees(cible.getId())
+                    ? new Coordonnees(cible.getEmailPro(), cible.getLinkedin())
+                    : null);
+}
+```
+
+| Situation | Réponse |
+|---|---|
+| Profil d'un compte inconnu, désactivé, ou en relation de blocage | 404 dans les trois cas : un blocage ne doit pas se deviner à un code différent |
+| Suivre un compte en relation de blocage | 404, comme s'il n'existait pas |
+| Écrire à un compte qu'on ne suit pas | 403 : le compte existe et se trouve par la recherche, prétendre le contraire serait faux |
+| Coordonnées d'un compte qu'on ne suit pas | Champ `coordonnees` à `null` |
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/ProfilPublic.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/ProfilPublic.java) et [`controller/MessageController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/MessageController.java). Côté Angular, [`pages/personne/personne.html`](../carnet-contact_frontend/src/app/pages/personne/personne.html) n'affiche que ce qui est arrivé : la page ne connaît aucune règle.
+
+```java
+/**
+ * @param coordonnees    null tant que je ne le suis pas : le client n'a pas à
+ *                       décider de les cacher, il ne les reçoit pas
+ */
+public record ProfilPublic(
+        Long id,
+        String nomAffichage,
+        String photoUrl,
+        boolean comptePrive,
+        StatutRelation statut,
+        boolean ilMeSuit,
+        long nombreAbonnes,
+        long nombreAbonnements,
+        boolean contenuVisible,
+        boolean peutEcrire,
+        CoordonneesPro coordonnees) {}
+```
+
+```java
+if (!relations.vuePour(expediteur).peutEcrire(destinataire.getId())) {
+    throw new ResponseStatusException(
+            HttpStatus.FORBIDDEN, "Suivez cette personne pour lui écrire.");
+}
+```
+
+### Compter en base : `GROUP BY` et `COUNT`
+
+Les suggestions reposent sur l'idée d'« ami d'ami » : un compte suivi par plusieurs de mes abonnements est une bonne piste, et plus il y a de chemins qui y mènent, meilleure elle est. Le calcul naïf chargerait mes abonnements, puis ceux de chacun d'eux, et compterait en Java — une requête par compte suivi, et toutes les lignes rapatriées en mémoire.
+
+La base sait compter. **`GROUP BY`** rassemble en une seule ligne toutes celles qui partagent une valeur ; **`COUNT`** dit combien chaque groupe en contenait. Et la même table peut apparaître deux fois dans le `FROM`, sous deux alias : le premier part de moi, le second part de chaque compte atteint par le premier.
+
+Le résultat n'est plus une entité, mais des colonnes. Spring Data renvoie alors une `List<Object[]>` : un tableau par ligne, les colonnes dans l'ordre du `SELECT`.
+
+```java
+// « Les comptes suivis par ceux que je suis, et par combien d'entre eux ».
+// l1 : mes liens. l2 : les liens des comptes que je suis. Meme table, deux alias.
+@Query("""
+        SELECT l2.cible.id, COUNT(l2)
+        FROM Lien l1, Lien l2
+        WHERE l1.demandeur.id = :moi
+          AND l2.demandeur.id = l1.cible.id
+        GROUP BY l2.cible.id
+        ORDER BY COUNT(l2) DESC
+        """)
+List<Object[]> amisDAmis(@Param("moi") Long moi);
+```
+
+```java
+for (Object[] ligne : depot.amisDAmis(moi.getId())) {
+    Long compteId = (Long) ligne[0];   // premiere colonne du SELECT
+    Long chemins  = (Long) ligne[1];   // COUNT : toujours un Long
+}
+```
+
+| Élément | Rôle |
+|---|---|
+| `FROM T x1, T x2` | La même table deux fois : chaque alias parcourt ses lignes indépendamment (auto-jointure) |
+| `GROUP BY colonne` | Une seule ligne par valeur distincte de la colonne |
+| `COUNT(x)` | Le nombre de lignes regroupées — un `Long` côté Java |
+| `ORDER BY COUNT(x) DESC` | Les groupes les plus nombreux d'abord |
+| `List<Object[]>` | Une ligne par tableau, colonnes dans l'ordre du `SELECT` |
+| `LinkedHashMap.putIfAbsent` | Fusionner plusieurs listes sans déplacer un élément déjà placé |
+
+Les suggestions combinent trois listes, de la meilleure à la plus générale : les amis d'amis, puis les comptes les plus suivis, puis les derniers inscrits — sans quoi la liste resterait vide tant que personne ne suit personne. Une `LinkedHashMap` garde l'ordre d'insertion, et `putIfAbsent` n'écrase jamais : un compte trouvé dans la première liste garde son rang et son compteur. Les exclusions (soi-même, comptes déjà suivis, blocages) se lisent dans `VueRelations`, sans requête supplémentaire.
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/AbonnementRepository.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/repository/AbonnementRepository.java) et la méthode `suggestions` de [`controller/UtilisateurController.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/controller/UtilisateurController.java)
+
+```java
+@Query("""
+        SELECT a2.suivi.id, COUNT(a2)
+        FROM Abonnement a1, Abonnement a2
+        WHERE a1.abonne.id = :moi AND a1.statut = :accepte
+          AND a2.abonne.id = a1.suivi.id AND a2.statut = :accepte
+        GROUP BY a2.suivi.id
+        ORDER BY COUNT(a2) DESC
+        """)
+List<Object[]> suivisParMesAbonnements(
+        @Param("moi") Long moi, @Param("accepte") StatutAbonnement accepte);
+```
+
+```java
+Map<Long, Long> candidats = new LinkedHashMap<>();
+for (Object[] ligne : abonnementRepository.suivisParMesAbonnements(moi.getId(), StatutAbonnement.ACCEPTE)) {
+    candidats.putIfAbsent((Long) ligne[0], (Long) ligne[1]);
+}
+for (Object[] ligne : abonnementRepository.lesPlusSuivis(StatutAbonnement.ACCEPTE)) {
+    candidats.putIfAbsent((Long) ligne[0], 0L);
+}
+for (Utilisateur recent : utilisateurRepository.findTop20ByActifTrueAndIdNotOrderByDateInscriptionDesc(moi.getId())) {
+    candidats.putIfAbsent(recent.getId(), 0L);
+}
+
+// Exclusions qui se lisent dans la vue, sans requête : moi, les comptes
+// déjà suivis ou demandés, les blocages.
+List<Long> ids = candidats.keySet().stream()
+        .filter(id -> !vue.estMoi(id) && !vue.sortantsTous().contains(id) && !vue.bloque(id))
+        .toList();
+```
+
+### Des notifications gardées en base
+
+« Bob a accepté votre demande » décrit un **événement passé**. L'état actuel ne permet pas de le reconstituer : l'abonnement existe, mais rien ne dit quand il a changé ni si Alice l'a déjà vu. Chaque événement devient donc une ligne — destinataire, acteur, type, date, lu ou non — écrite au moment où il se produit.
+
+Côté Angular, la pastille « Abonnements » se nourrit d'un sondage de `/api/notifications/non-lues`, sur le patron exact des messages non lus (sections 25 et 28) : rien ne démarre côté serveur, jamais deux sondages à la fois, arrêt à la déconnexion, mémoire de ce qui a déjà été annoncé, premier tour silencieux. Les mêmes problèmes appellent les mêmes solutions.
+
+Une notification qui cesse d'être vraie est retirée : si Alice ne suit plus Bob, « Alice vous suit » disparaît. Un journal d'historique la garderait ; ici, la liste montre l'activité en cours.
+
+```java
+@Service
+public class Evenements {
+
+    // « Un evenement neuf est non lu et date de maintenant » : ecrit UNE fois,
+    // au lieu d'etre recopie dans chaque controleur qui en cree un.
+    @Transactional
+    public void signaler(Compte destinataire, Compte acteur, TypeEvenement type) {
+        Evenement evenement = new Evenement();
+        evenement.setDestinataire(destinataire);
+        evenement.setActeur(acteur);
+        evenement.setType(type);
+        evenement.setDate(Instant.now());
+        evenement.setLu(false);
+        depot.save(evenement);
+    }
+}
+```
+
+Côté TypeScript, chaque type d'événement a sa phrase. Un `switch` compilerait même s'il en oubliait un ; un **`Record`** ne compile pas tant qu'il manque une entrée.
+
+```typescript
+type TypeEvenement = 'NOUVEL_ABONNE' | 'DEMANDE_RECUE';
+
+// Record<Cle, Valeur> : un objet qui a OBLIGATOIREMENT une entree par cle.
+// Ajouter un troisieme type sans sa phrase devient une erreur de compilation.
+const PHRASES: Record<TypeEvenement, (nom: string) => string> = {
+  NOUVEL_ABONNE: nom => `${nom} vous suit`,
+  DEMANDE_RECUE: nom => `${nom} demande a vous suivre`
+};
+
+const texte = PHRASES[evenement.type](evenement.acteur.nom);
+```
+
+| Choix | Raison |
+|---|---|
+| Notification enregistrée en base | Un événement passé ne se recalcule pas depuis l'état actuel, et il a un état lu / non lu |
+| Retirée quand elle cesse d'être vraie | « Alice vous suit » après son désabonnement serait faux |
+| Sondage toutes les 15 s | Même patron que les messages non lus : aucune infrastructure nouvelle |
+| `Record<Type, …>` côté Angular | Un type oublié est une erreur de compilation, pas une phrase vide à l'écran |
+
+**Dans le projet** — [`carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/abonnement/Notifications.java`](../carnet-contact-backend/src/main/java/com/example/carnet_contact_backend/abonnement/Notifications.java), [`carnet-contact_frontend/src/app/abonnement.model.ts`](../carnet-contact_frontend/src/app/abonnement.model.ts) et [`services/activite.ts`](../carnet-contact_frontend/src/app/services/activite.ts)
+
+```java
+@Transactional
+public void notifier(Utilisateur destinataire, Utilisateur acteur, TypeNotification type) {
+    Notification notification = new Notification();
+    notification.setDestinataire(destinataire);
+    notification.setActeur(acteur);
+    notification.setType(type);
+    notification.setDate(Instant.now());
+    notification.setLue(false);
+    notificationRepository.save(notification);
+}
+
+/** Retire les notifications de ces types, envoyées par `acteur` à `destinataire`. */
+@Transactional
+public void retirer(Long destinataireId, Long acteurId, TypeNotification... types) {
+    notificationRepository.supprimer(destinataireId, acteurId, List.of(types));
+}
+```
+
+```typescript
+const PHRASES: Record<TypeNotification, (nom: string) => string> = {
+  NOUVEL_ABONNE: nom => `${nom} vous suit`,
+  DEMANDE_RECUE: nom => `${nom} demande à vous suivre`,
+  DEMANDE_ACCEPTEE: nom => `${nom} a accepté votre demande`
+};
+```
+
+```typescript
+if (!this.dejaVues.has(notification.id)) {
+  this.notifications.notifier('Abonnements', texteNotification(notification), '/abonnements');
+}
+```
+
+### Côté Angular : quand le routeur réutilise le composant
+
+La section 13 l'annonçait : le `snapshot` suffit « tant qu'aucun lien ne mène directement d'une page paramétrée à une autre page de la même route ». La page d'une personne est écrite pour ce cas. Dès qu'un lien y mène de `/personne/2` à `/personne/3`, Angular garde le même composant et ne change que le paramètre : un identifiant lu une seule fois laisserait l'ancienne personne à l'écran. La page lit donc `paramMap` comme un Observable, qui émet à l'arrivée **puis** à chaque nouvel identifiant.
+
+S'abonner à un Observable qui ne se termine jamais oblige à s'en désabonner. `takeUntilDestroyed()` s'en charge : il coupe le flux quand le composant est détruit. Il doit être appelé dans le constructeur, ou dans l'initialisation d'un champ — là où Angular sait de quel composant il s'agit.
+
+```typescript
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+
+export class Fiche {
+  private route = inject(ActivatedRoute);
+
+  constructor() {
+    // paramMap emet a l'arrivee, PUIS a chaque nouvel identifiant quand
+    // Angular garde le composant (/fiche/2 -> /fiche/3).
+    this.route.paramMap.pipe(
+      map(parametres => Number(parametres.get('id'))),
+      // Desabonnement automatique a la destruction du composant.
+      takeUntilDestroyed()
+    ).subscribe(id => this.charger(id));
+  }
+}
+```
+
+Le lien « Écrire » de cette page transmet la conversation à ouvrir par un **paramètre de requête** : `/messages?avec=2`. La messagerie le lit dans le `snapshot`, et c'est suffisant : rien dans la messagerie ne modifie `?avec=`, une seule lecture suffit — faite une fois la liste des conversations arrivée.
+
+```html
+<!-- [queryParams] ecrit la partie apres le « ? » : /messages?avec=2 -->
+<a [routerLink]="['/messages']" [queryParams]="{ avec: personne.id }">Écrire</a>
+```
+
+```typescript
+// Une chaine, ou null si absent : Number(null) vaut 0, qu'aucun compte ne porte.
+const avec = Number(this.route.snapshot.queryParamMap.get('avec'));
+```
+
+| Lecture | Quand l'utiliser |
+|---|---|
+| `route.snapshot.paramMap` | Le composant est recréé pour chaque nouvelle valeur |
+| `route.paramMap` + `takeUntilDestroyed()` | Un lien peut mener à la même route avec un autre paramètre |
+| `[queryParams]="{ cle: valeur }"` | Écrire `?cle=valeur` depuis un `routerLink` |
+| `route.snapshot.queryParamMap.get('cle')` | Lire une fois un paramètre situé après le `?` |
+
+**Dans le projet** — [`carnet-contact_frontend/src/app/pages/personne/personne.ts`](../carnet-contact_frontend/src/app/pages/personne/personne.ts) et [`pages/messages/messages.ts`](../carnet-contact_frontend/src/app/pages/messages/messages.ts). Le test de la messagerie fournit une fausse route par `useFactory` plutôt que `useValue` : la fabrique ne s'exécute qu'au moment où le composant la demande, donc après que chaque test a choisi ses paramètres ([`messages.spec.ts`](../carnet-contact_frontend/src/app/pages/messages/messages.spec.ts)).
+
+```typescript
+this.route.paramMap.pipe(
+  map(parametres => Number(parametres.get('id'))),
+  takeUntilDestroyed()
+).subscribe(id => this.charger(id));
+```
+
+```typescript
+const demande = Number(this.route.snapshot.queryParamMap.get('avec'));
+if (liste.some(i => i.compte.id === demande)) {
+  this.ouvrir(demande);
+}
+```
+
+```typescript
+{ provide: ActivatedRoute, useFactory: () => ({ snapshot: { queryParamMap: parametres } }) }
+```
+
+### Côté Angular : un bouton sans état, une sélection sans copie
+
+Un bouton « Suivre » apparaît dans chaque carte du fil, sur la page d'une personne, dans une conversation en lecture seule. Si chaque bouton gardait son propre statut, deux publications d'Alice afficheraient deux états différents après un clic sur l'une d'elles. Le bouton ne garde donc **rien** : il lit le statut dans `AbonnementService`, un signal partagé (section 12) qui contient une `Map` identifiant → statut.
+
+Un piège accompagne ce choix. Un signal ne prévient ses lecteurs que si sa valeur change de **référence**. Appeler `set()` sur la `Map` existante la modifie sans en changer la référence : aucun bouton ne se mettrait à jour. Il faut fabriquer une nouvelle `Map` à chaque changement.
+
+Ce que le bouton ne peut pas savoir, c'est ce que la page doit faire ensuite : recharger un profil pour faire apparaître les coordonnées, ou afficher la zone de saisie d'une conversation. Il se contente de l'annoncer par un `output()` (section 8), et chaque parent décide.
+
+La messagerie applique le même principe à la conversation ouverte. Elle garde son **identifiant**, et retrouve l'objet dans la liste par un `computed()`. Une copie de l'objet resterait sur l'ancien `peutEcrire` quand la liste change après un abonnement ; l'identifiant, lui, est relu dans la liste à jour.
+
+```typescript
+@Injectable({ providedIn: 'root' })
+export class Statuts {
+  private statuts = signal<ReadonlyMap<number, Statut>>(new Map());
+
+  statutDe(id: number): Statut {
+    return this.statuts().get(id) ?? 'AUCUN';
+  }
+
+  definir(id: number, statut: Statut): void {
+    // NOUVELLE Map : un signal ne previent que si la reference change.
+    // Un set() sur l'ancienne laisserait tous les lecteurs sur l'etat precedent.
+    this.statuts.update(actuels => new Map(actuels).set(id, statut));
+  }
+}
+```
+
+```typescript
+export class BoutonLien {
+  private statuts = inject(Statuts);
+
+  compteId = input.required<number>();
+  statutChange = output<Statut>();     // la suite, seul le parent la connait
+
+  // Aucun etat local : deux boutons pour le meme compte lisent la meme valeur.
+  statut = computed(() => this.statuts.statutDe(this.compteId()));
+}
+```
+
+```typescript
+// Garder l'IDENTIFIANT et deriver l'objet : une seule source de verite.
+elements = signal<Element[]>([]);
+private selectionId = signal<number | null>(null);
+
+selection = computed(() =>
+  this.elements().find(e => e.id === this.selectionId()) ?? null);
+```
+
+| Approche | Conséquence |
+|---|---|
+| Statut gardé dans chaque bouton | Deux boutons du même compte se contredisent après un clic |
+| Statut dans un signal de service, `Map` remplacée à chaque changement | Tous les boutons se mettent à jour ensemble |
+| `Map` modifiée sur place | Aucun bouton ne se met à jour : la référence n'a pas changé |
+| Copie de l'objet sélectionné | Reste sur l'ancienne version quand la liste change |
+| Identifiant + `computed()` | La sélection suit la liste d'elle-même |
+
+Deux détails ont compté dans la messagerie. Le service renvoie désormais l'Observable de l'envoi, et la page ne vide son champ que dans `next` : vidé avant la réponse, le champ perdait le texte d'un envoi refusé. Et, dans un gabarit, `selection()?.compte?.id` garde ses deux `?.` : contrairement à TypeScript, le vérificateur de gabarits d'Angular ne prolonge pas le court-circuit du premier à toute la chaîne.
+
+**Dans le projet** — [`carnet-contact_frontend/src/app/components/bouton-suivre/bouton-suivre.ts`](../carnet-contact_frontend/src/app/components/bouton-suivre/bouton-suivre.ts), [`services/abonnement.ts`](../carnet-contact_frontend/src/app/services/abonnement.ts), [`pages/messages/messages.ts`](../carnet-contact_frontend/src/app/pages/messages/messages.ts) et [`messages.html`](../carnet-contact_frontend/src/app/pages/messages/messages.html)
+
+```typescript
+statutChange = output<StatutRelation>();
+
+/** computed() lit un signal du service à travers statutDe : il se recalcule avec lui. */
+statut = computed(() => this.abonnements.statutDe(this.compteId()));
+```
+
+```typescript
+private definir(id: number, statut: StatutRelation): void {
+  this.statutsSignal.update(actuels => {
+    const copie = new Map(actuels);
+    if (statut === 'AUCUN') {
+      copie.delete(id);
+    } else {
+      copie.set(id, statut);
+    }
+    return copie;
+  });
+}
+```
+
+```typescript
+private selectionId = signal<number | null>(null);
+
+selection = computed(() =>
+  this.interlocuteurs().find(i => i.compte.id === this.selectionId()) ?? null
+);
+```
+
+```html
+<app-bouton-suivre
+  [compteId]="conversation.compte.id"
+  (statutChange)="apresSuivi(conversation.compte.id, $event)" />
+```
+
+```typescript
+this.messageService.envoyer(conversation.compte.id, this.formulaire.value.contenu!).subscribe({
+  // Le champ n'est vidé qu'une fois le message accepté : en cas de refus,
+  // le texte reste là, prêt à être renvoyé ou copié ailleurs.
+  next: () => this.formulaire.reset(),
+  // La bannière vient de erreurInterceptor.
+  error: () => {}
+});
+```
+
+---
+
+## 38. Backend Spring Boot
 
 Spring Boot organise traditionnellement une application autour de trois couches bien distinctes, chacune avec une responsabilité précise, ce qui reflète une architecture logicielle très répandue dans le développement backend en général (pas seulement en Java). Comprendre cette séparation aide à savoir instinctivement où placer un nouveau bout de code selon ce qu'il doit faire.
 
@@ -6816,7 +7457,7 @@ Le principe est exactement le même que l'injection de dépendances vue côté A
 
 ---
 
-## 38. Git et GitHub
+## 39. Git et GitHub
 
 Git est un outil de gestion de versions : il permet de garder un historique complet de toutes les modifications apportées à un projet au fil du temps, sous forme d'une succession d'instantanés (les "commits"). GitHub, de son côté, est un service d'hébergement en ligne pour des dépôts Git — il permet de sauvegarder ce même historique sur un serveur distant, accessible depuis n'importe quel ordinateur, et sert également de plateforme de collaboration si un projet est partagé entre plusieurs personnes.
 
@@ -6873,7 +7514,7 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 
 ---
 
-## 39. Pense-bête de dépannage
+## 40. Pense-bête de dépannage
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
@@ -6897,12 +7538,12 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Une liste ne se met pas à jour après un ajout ou une suppression faits par un autre composant | Chaque composant possède sa propre copie de la donnée dans un signal local | Déplacer la donnée dans le service (signal partagé, voir section 12) plutôt que de recharger la page |
 | Le formulaire d'édition reste vide alors que la fiche s'affiche bien | Formulaire pré-rempli à la construction, avant l'arrivée des données du signal partagé | Pré-remplir dans un `effect()` qui réagit au signal, pas dans le `constructor` directement (section 14) |
 | Le formulaire d'édition efface la saisie en cours de temps en temps | Un `effect()` de pré-remplissage se réexécute à chaque changement du signal (ex : rechargement de la liste) | Ajouter un drapeau booléen : ne `patchValue()` qu'une seule fois |
-| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 37) ; regarder la ligne `preflight` dans l'onglet Réseau |
+| `PUT`/`DELETE` renvoie 403 ou une erreur CORS alors que `GET` fonctionne | Requête « non anodine » : le navigateur envoie d'abord un `OPTIONS` (preflight) que `@CrossOrigin` doit autoriser | Vérifier `@CrossOrigin` sur le contrôleur (section 38) ; regarder la ligne `preflight` dans l'onglet Réseau |
 | Modification enregistrée côté serveur mais la fiche affiche encore l'ancienne valeur | Le signal partagé n'a pas été mis à jour après le `PUT` | Dans le service, `.update()` avec `.map()` pour remplacer l'élément modifié par la réponse du serveur |
 | `NG0203` / `inject() must be called from an injection context` sur un `effect()` | `effect()` appelé hors constructeur / hors champ de classe | Le déplacer dans le `constructor` du composant |
 | Backend éteint ou en erreur : liste vide, formulaire sans réaction, aucun message | `.subscribe()` n'a qu'un callback de succès, l'erreur du flux n'est traitée nulle part | `.pipe(catchError(...))` dans le service + un signal d'erreur affiché (section 15) |
 | `catchError` provoque `Type 'void' is not assignable to type 'ObservableInput<...>'` | Le callback de `catchError` ne retourne pas d'Observable | Retourner `of(valeurDeRepli)`, `EMPTY`, ou `throwError(() => err)` |
-| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 37) |
+| La bannière d'erreur d'un `POST`/`PUT` met plusieurs secondes à apparaître (serveur éteint) | Le navigateur attend l'expiration du preflight `OPTIONS` avant de conclure à l'échec | Normal — pas de correction ; le `GET` sans preflight échoue plus vite (section 38) |
 | Une modification du code (nouveau signal, `delay()` ajouté...) reste sans effet dans le navigateur | Le rechargement à chaud de `ng serve` n'a pas pris (fréquent sous Windows / avec le SSR) | `Ctrl + C` sur `ng serve`, `npm start`, attendre `bundle generation complete`, puis `Ctrl + Shift + R` dans le navigateur |
 | L'indicateur de chargement ne s'affiche jamais au rafraîchissement de la page | Le `GET` initial part côté serveur (SSR) : `chargement` passe à `true` puis `false` avant l'envoi du HTML | Normal ; l'indicateur n'apparaît que sur les requêtes déclenchées par un clic (ajout, modif, suppression), section 16 |
 | L'indicateur de chargement reste allumé après une erreur réseau | `set(false)` placé seulement dans `.subscribe(next)`, qui ne s'exécute pas en cas d'erreur | Le mettre dans `finalize()` du `.pipe()`, qui s'exécute quelle que soit l'issue (section 16) |
@@ -6999,3 +7640,9 @@ Prendre l'habitude de répéter cette séquence après chaque fonctionnalité ou
 | Une image envoyée ne s'affiche pas, 404 sur `localhost:4200/api/...` | Adresse relative : `<img>` la résout contre le serveur Angular, sans passer par l'intercepteur de base URL | Faire renvoyer une adresse absolue par le serveur (`ServletUriComponentsBuilder`) (section 36) |
 | Une méthode `@Scheduled` ne s'exécute jamais, sans aucune erreur | `@EnableScheduling` absent | L'ajouter sur la classe principale de l'application (section 36) |
 | `TransactionRequiredException` sur une requête `@Modifying` appelée depuis une tâche planifiée | `@Transactional` posé sur une méthode appelée depuis sa propre classe : l'appel ne traverse pas le proxy | Poser `@Transactional` sur la méthode du dépôt, ou sur la méthode appelée de l'extérieur (section 36) |
+| `Object is possibly 'undefined'` (TS2532) sur `a()?.b.c` dans un gabarit, alors que la même expression passe en TypeScript | Le vérificateur de gabarits d'Angular ne prolonge pas le court-circuit de `?.` à toute la chaîne : `a()?.b` y reste « peut-être `undefined` » | Protéger chaque maillon : `a()?.b?.c` (section 37) |
+| `GET /api/messages/interlocuteurs` répond 400 et non 404 | Tant que la route littérale n'existe pas, l'adresse est captée par `/{autreId}`, et « interlocuteurs » ne se convertit pas en `Long` | Déclarer la route : Spring préfère toujours un chemin littéral à un motif `{…}` (section 37) |
+| Supprimer un compte échoue sur la clé étrangère `ABONNEMENT.ABONNE_ID` | D'autres tables (abonnements, blocages, notifications) référencent encore le compte, dans un sens ou dans l'autre | Supprimer ces lignes d'abord, puis le compte ; le prouver par un test avec `flush()` (sections 35 et 37) |
+| Une modification d'entité semble ignorée après une suppression en masse | `@Modifying(clearAutomatically = true)` vide le contexte de persistance : les objets chargés avant sont détachés, leurs changements ne sont plus suivis | Enregistrer et notifier **avant** la requête `@Modifying`, ou relire l'entité après (section 37) |
+| `X is not used within the template of Y` juste après l'ajout d'un import | Le `.ts` a été enregistré avant le `.html` qui utilise l'élément — ou l'élément a vraiment été oublié dans le gabarit | Vérifier le gabarit : si l'élément y est, l'avertissement disparaît à son enregistrement (section 37) |
+| Le texte saisi disparaît quand le serveur refuse l'envoi | Le formulaire est vidé juste après l'appel, sans attendre la réponse | Faire renvoyer l'Observable par le service, et n'appeler `reset()` que dans `next` (section 37) |

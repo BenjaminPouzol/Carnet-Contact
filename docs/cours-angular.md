@@ -1594,7 +1594,7 @@ Les contacts disparaissent à chaque rafraîchissement de la page. Il faut les r
 
 ### Côté serveur : une API REST en trois routes
 
-> **Encadré backend.** Ce cours porte sur Angular, mais certaines étapes n'ont aucun sens sans leur contrepartie serveur. Ces encadrés donnent le minimum pour comprendre ce à quoi Angular parle. Le détail Spring Boot est dans la [section 37 du support](support-apprentissage-angular-spring.md#37-backend-spring-boot).
+> **Encadré backend.** Ce cours porte sur Angular, mais certaines étapes n'ont aucun sens sans leur contrepartie serveur. Ces encadrés donnent le minimum pour comprendre ce à quoi Angular parle. Le détail Spring Boot est dans la [section 38 du support](support-apprentissage-angular-spring.md#38-backend-spring-boot).
 
 Une **API REST** est une convention : on expose des **ressources** (ici, des contacts) à des **URL**, et on agit dessus avec les **verbes** HTTP.
 
