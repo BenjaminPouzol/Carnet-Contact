@@ -1,0 +1,63 @@
+:host {
+  display: block;
+}
+
+.carte-compte {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.5rem 0;
+}
+
+/* Le nom prend la place disponible ; les actions passent à la ligne sur un
+   écran étroit plutôt que d'écraser le nom. */
+.identite {
+  display: flex;
+  flex: 1 1 12rem;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.identite:hover .nom,
+.identite:focus-visible .nom {
+  text-decoration: underline;
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar-lettre {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--bleu), var(--rouge));
+}
+
+.nom {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cadenas {
+  font-size: 0.8rem;
+  color: var(--texte-doux);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}

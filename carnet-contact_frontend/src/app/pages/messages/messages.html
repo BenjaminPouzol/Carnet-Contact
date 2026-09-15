@@ -1,37 +1,37 @@
 <h2>Messages</h2>
 
 <div class="messagerie">
-  <!-- Colonne gauche : les interlocuteurs possibles -->
+  <!-- Colonne gauche : les conversations possibles -->
   <aside class="carte colonne-gauche">
-    <h3>Comptes</h3>
+    <h3>Conversations</h3>
 
     @if (interlocuteurs().length === 0) {
       <p class="muet">
-        Aucun autre compte pour l'instant. Créez-en un second pour tester la
-        messagerie.
+        Aucune conversation pour l'instant. Suivez des comptes depuis la page
+        <a routerLink="/abonnements">Abonnements</a> pour pouvoir leur écrire.
       </p>
     } @else {
       <ul class="liste-comptes">
-        @for (utilisateur of interlocuteurs(); track utilisateur.id) {
+        @for (interlocuteur of interlocuteurs(); track interlocuteur.compte.id) {
           <li>
             <button
               type="button"
               class="ligne-compte"
-              [class.selectionne]="selection()?.id === utilisateur.id"
-              (click)="ouvrir(utilisateur)">
+              [class.selectionne]="selection()?.compte?.id === interlocuteur.compte.id"
+              (click)="ouvrir(interlocuteur.compte.id)">
 
-              @if (utilisateur.photoUrl) {
-                <img class="avatar" [src]="utilisateur.photoUrl" alt="" />
+              @if (interlocuteur.compte.photoUrl) {
+                <img class="avatar" [src]="interlocuteur.compte.photoUrl" alt="" />
               } @else {
                 <span class="avatar avatar-lettre">
-                  {{ utilisateur.nomAffichage.charAt(0).toUpperCase() }}
+                  {{ interlocuteur.compte.nomAffichage.charAt(0).toUpperCase() }}
                 </span>
               }
 
-              <span class="nom">{{ utilisateur.nomAffichage }}</span>
+              <span class="nom">{{ interlocuteur.compte.nomAffichage }}</span>
 
-              @if (nonLusDe(utilisateur.id) > 0) {
-                <span class="pastille">{{ nonLusDe(utilisateur.id) }}</span>
+              @if (nonLusDe(interlocuteur.compte.id) > 0) {
+                <span class="pastille">{{ nonLusDe(interlocuteur.compte.id) }}</span>
               }
             </button>
           </li>
@@ -42,8 +42,11 @@
 
   <!-- Colonne droite : le fil de discussion -->
   <section class="carte colonne-droite">
-    @if (selection(); as destinataire) {
-      <h3>Conversation avec {{ destinataire.nomAffichage }}</h3>
+    @if (selection(); as conversation) {
+      <h3>
+        Conversation avec
+        <a [routerLink]="['/personne', conversation.compte.id]">{{ conversation.compte.nomAffichage }}</a>
+      </h3>
 
       <div class="fil">
         @if (fil().length === 0) {
@@ -136,12 +139,29 @@
         }
       </div>
 
-      <form [formGroup]="formulaire" (ngSubmit)="envoyer()" class="saisie">
-        <input formControlName="contenu" placeholder="Votre message…" />
-        <button type="submit" [disabled]="formulaire.invalid || chargement()">Envoyer</button>
-      </form>
+      @if (conversation.peutEcrire) {
+        <form [formGroup]="formulaire" (ngSubmit)="envoyer()" class="saisie">
+          <input formControlName="contenu" placeholder="Votre message…" />
+          <button type="submit" [disabled]="formulaire.invalid || chargement()">Envoyer</button>
+        </form>
+      } @else {
+        <!-- Pas de champ désactivé : une case grisée laisse chercher pourquoi on
+             ne peut pas taper. Une phrase donne la raison, et le bouton juste à
+             côté propose le remède. Le serveur refuserait de toute façon l'envoi
+             (403) : ce bloc n'est qu'une explication, pas la protection. -->
+        <div class="lecture-seule" role="note">
+          <p class="muet">
+            Vous ne suivez pas {{ conversation.compte.nomAffichage }} : cette conversation
+            reste lisible, mais vous ne pouvez plus y répondre. Suivez ce compte pour lui
+            écrire de nouveau (s'il est privé, votre demande devra d'abord être acceptée).
+          </p>
+          <app-bouton-suivre
+            [compteId]="conversation.compte.id"
+            (statutChange)="apresSuivi(conversation.compte.id, $event)" />
+        </div>
+      }
     } @else {
-      <p class="muet vide">Choisissez un compte à gauche pour ouvrir la conversation.</p>
+      <p class="muet vide">Choisissez une conversation à gauche pour l'ouvrir.</p>
     }
   </section>
 </div>

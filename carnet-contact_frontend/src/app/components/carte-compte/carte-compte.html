@@ -1,0 +1,28 @@
+<div class="carte-compte">
+  <a class="identite" [routerLink]="['/personne', compte().id]">
+    @if (compte().photoUrl) {
+      <img class="avatar" [src]="compte().photoUrl" alt="" />
+    } @else {
+      <span class="avatar avatar-lettre" aria-hidden="true">{{ initiale() }}</span>
+    }
+
+    <span class="nom">{{ compte().nomAffichage }}</span>
+
+    @if (compte().comptePrive) {
+      <!-- role="img" + aria-label : l'icône seule ne dit rien à un lecteur d'écran. -->
+      <span class="pi pi-lock cadenas" role="img" aria-label="Compte privé" title="Compte privé"></span>
+    }
+  </a>
+
+  <div class="actions">
+    <!-- Les actions propres à la liste, écrites par le parent. -->
+    <ng-content />
+
+    @if (avecBouton()) {
+      <app-bouton-suivre
+        [compteId]="compte().id"
+        [comptePrive]="compte().comptePrive ?? false"
+        (statutChange)="statutChange.emit($event)" />
+    }
+  </div>
+</div>

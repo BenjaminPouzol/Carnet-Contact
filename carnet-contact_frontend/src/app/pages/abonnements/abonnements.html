@@ -1,0 +1,125 @@
+<div class="entete-page">
+  <h2>Abonnements</h2>
+  <p class="muet">
+    Les personnes que vous suivez pour retrouver leurs publications dans le fil.
+    Une liste distincte de vos contacts.
+  </p>
+</div>
+
+<!-- L'activité récente : nouveaux abonnés, demandes, demandes acceptées. Celles
+     qui étaient non lues à l'ouverture restent en surbrillance, même si la page
+     vient de les marquer comme lues côté serveur. -->
+@if (notifications().length > 0) {
+  <section class="carte bloc" aria-labelledby="titre-activite">
+    <h3 id="titre-activite">Activité récente</h3>
+    <ul class="liste-notifications">
+      @for (notification of notifications(); track notification.id) {
+        <li [class.non-lue]="!notification.lue">
+          <a [routerLink]="['/personne', notification.acteur.id]">{{ texteNotification(notification) }}</a>
+          <time class="muet" [attr.datetime]="notification.date">
+            {{ notification.date | date: 'dd/MM/yyyy, HH:mm' }}
+          </time>
+        </li>
+      }
+    </ul>
+  </section>
+}
+
+<!-- Les demandes reçues n'existent que pour un compte privé : la section ne
+     s'affiche que s'il y en a. -->
+@if (demandes().length > 0) {
+  <section class="carte bloc bloc-demandes" aria-labelledby="titre-demandes">
+    <h3 id="titre-demandes">
+      Demandes reçues <span class="nombre">{{ demandes().length }}</span>
+    </h3>
+    <p class="muet aide">Ces personnes attendent votre accord pour vous suivre.</p>
+
+    @for (compte of demandes(); track compte.id) {
+      <!-- Pas de bouton « Suivre » ici : la question posée est « acceptez-vous
+           qu'il vous suive ? », pas « voulez-vous le suivre ? ». -->
+      <app-carte-compte [compte]="compte" [avecBouton]="false">
+        <p-button label="Accepter" icon="pi pi-check" size="small" (onClick)="accepter(compte)" />
+        <p-button label="Refuser" severity="secondary" size="small" [text]="true" (onClick)="refuser(compte)" />
+      </app-carte-compte>
+    }
+  </section>
+}
+
+<section class="carte bloc" aria-labelledby="titre-recherche">
+  <h3 id="titre-recherche">Trouver des personnes</h3>
+  <input
+    pInputText
+    type="search"
+    class="champ-recherche"
+    aria-label="Rechercher un compte par son nom"
+    placeholder="Rechercher par nom…"
+    [formControl]="champRecherche" />
+
+  @if (resultats(); as liste) {
+    @if (liste.length > 0) {
+      @for (compte of liste; track compte.id) {
+        <app-carte-compte [compte]="compte" (statutChange)="relationModifiee()" />
+      }
+    } @else {
+      <p class="muet">Aucun compte ne correspond à cette recherche.</p>
+    }
+  } @else if (suggestions().length > 0) {
+    <h4 class="sous-titre">Suggestions</h4>
+    @for (suggestion of suggestions(); track suggestion.compte.id) {
+      <app-carte-compte [compte]="suggestion.compte" (statutChange)="relationModifiee()">
+        @if (suggestion.enCommun > 0) {
+          <span class="muet en-commun">
+            Suivi par {{ suggestion.enCommun }} de vos abonnements
+          </span>
+        }
+      </app-carte-compte>
+    }
+  }
+</section>
+
+<section class="carte bloc" aria-labelledby="titre-suivis">
+  <h3 id="titre-suivis">
+    Je suis <span class="nombre">{{ suivis().length }}</span>
+  </h3>
+
+  <!-- @empty : ce qui s'affiche quand la boucle n'a rien à parcourir. -->
+  @for (compte of suivis(); track compte.id) {
+    <app-carte-compte [compte]="compte" (statutChange)="relationModifiee()" />
+  } @empty {
+    <p class="muet">Vous ne suivez encore personne. Les suggestions ci-dessus sont un bon point de départ.</p>
+  }
+
+  @if (envoyees().length > 0) {
+    <h4 class="sous-titre">Demandes envoyées</h4>
+    @for (compte of envoyees(); track compte.id) {
+      <app-carte-compte [compte]="compte" (statutChange)="relationModifiee()" />
+    }
+  }
+</section>
+
+<section class="carte bloc" aria-labelledby="titre-abonnes">
+  <h3 id="titre-abonnes">
+    Mes abonnés <span class="nombre">{{ abonnes().length }}</span>
+  </h3>
+
+  @for (compte of abonnes(); track compte.id) {
+    <!-- « Retirer » : il ne vous suit plus, sans être bloqué. Le bouton
+         « Suivre » reste là pour le suivre en retour. -->
+    <app-carte-compte [compte]="compte" (statutChange)="relationModifiee()">
+      <p-button label="Retirer" severity="secondary" size="small" [text]="true" (onClick)="retirer(compte)" />
+    </app-carte-compte>
+  } @empty {
+    <p class="muet">Personne ne vous suit pour l'instant.</p>
+  }
+</section>
+
+@if (bloques().length > 0) {
+  <section class="carte bloc" aria-labelledby="titre-bloques">
+    <h3 id="titre-bloques">Comptes bloqués</h3>
+    @for (compte of bloques(); track compte.id) {
+      <app-carte-compte [compte]="compte" [avecBouton]="false">
+        <p-button label="Débloquer" severity="secondary" size="small" [outlined]="true" (onClick)="debloquer(compte)" />
+      </app-carte-compte>
+    }
+  </section>
+}

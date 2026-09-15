@@ -164,4 +164,58 @@ describe('PublicationService', () => {
     expect(service.publications()[0].reactions[0].parMoi).toBe(true);
     expect(service.publications()[1].reactions).toEqual([]);
   });
+
+  // --- Filtres « abonnements » et « auteur » -------------------------------
+
+  it('envoie le filtre « abonnements », puis le filtre « auteur », sans les mélanger', () => {
+    service.charger(null, { abonnements: true });
+
+    const abonnements = requeteFil();
+    expect(abonnements.request.params.get('abonnements')).toBe('true');
+    expect(abonnements.request.params.has('auteur')).toBe(false);
+    abonnements.flush(tranche([]));
+
+    // Charger la page d'une personne repart d'un filtre neuf : « abonnements »
+    // ne doit pas traîner dans la requête.
+    service.charger(null, { auteurId: 5 });
+
+    const auteur = requeteFil();
+    expect(auteur.request.params.get('auteur')).toBe('5');
+    expect(auteur.request.params.has('abonnements')).toBe(false);
+    auteur.flush(tranche([]));
+  });
+
+  it('« Voir plus » garde le filtre « abonnements »', () => {
+    service.charger(null, { abonnements: true });
+    requeteFil().flush(tranche([unePublication({ id: 12 })], 12));
+
+    service.chargerPlus();
+
+    const requete = requeteFil();
+    expect(requete.request.params.get('abonnements')).toBe('true');
+    expect(requete.request.params.get('avant')).toBe('12');
+    requete.flush(tranche([]));
+  });
+
+  /** On ne se suit pas soi-même : sa propre publication n'a rien à faire sous « Abonnements ». */
+  it('sa propre publication n\'apparaît pas sous « Abonnements »', () => {
+    service.charger(null, { abonnements: true });
+    requeteFil().flush(tranche([unePublication({ id: 1 })]));
+
+    service.publier({ categorie: 'SPORT', contenu: 'Piscine', imageUrl: '' }).subscribe();
+    backend.expectOne(r => r.method === 'POST').flush(unePublication({ id: 9 }));
+
+    expect(ids()).toEqual([1]);
+  });
+
+  it('une publication n\'apparaît pas sur la page d\'une autre personne', () => {
+    service.charger(null, { auteurId: 5 });
+    requeteFil().flush(tranche([]));
+
+    service.publier({ categorie: 'SPORT', contenu: 'Piscine', imageUrl: '' }).subscribe();
+    backend.expectOne(r => r.method === 'POST')
+      .flush(unePublication({ id: 9, auteur: { id: 1, nomAffichage: 'Alice', photoUrl: null } }));
+
+    expect(ids()).toEqual([]);
+  });
 });

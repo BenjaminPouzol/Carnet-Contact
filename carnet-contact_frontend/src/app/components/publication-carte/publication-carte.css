@@ -43,6 +43,18 @@
   font-size: 0.8rem;
 }
 
+/* Le nom reste lisible comme un nom : même couleur que le texte, et le
+   soulignement n'apparaît qu'au survol ou au focus clavier. */
+.lien-auteur {
+  color: inherit;
+  text-decoration: none;
+}
+
+.lien-auteur:hover,
+.lien-auteur:focus-visible {
+  text-decoration: underline;
+}
+
 /* color-mix : la teinte de la categorie melangee au fond de carte. Le melange
    se fait avec var(--carte), donc il s'adapte seul au mode sombre — une couleur
    pale ecrite en dur resterait claire sur fond noir. */

@@ -1,8 +1,9 @@
 import { Injectable, PLATFORM_ID, inject, signal } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { EMPTY, Subscription, catchError, switchMap, timer } from 'rxjs';
+import { EMPTY, Observable, Subscription, catchError, switchMap, tap, timer } from 'rxjs';
 import { Message } from '../message.model';
+import { Interlocuteur } from '../abonnement.model';
 import { contexte } from '../interceptors/http-contexte';
 import { NotificationService } from './notification';
 
@@ -170,18 +171,38 @@ export class MessageService {
     this.premierTourNonLus = true;
   }
 
-  envoyer(destinataireId: number, contenu: string): void {
-    this.http.post<Message>(this.apiUrl, { destinataireId, contenu }, {
+  /**
+   * Les personnes de la colonne « Conversations » : celles que je suis, et
+   * celles avec qui un échange existe déjà. Pour chacune, le serveur dit si
+   * l'on peut encore lui écrire — la page n'a pas à connaître la règle.
+   */
+  interlocuteurs(): Observable<Interlocuteur[]> {
+    return this.http.get<Interlocuteur[]>(`${this.apiUrl}/interlocuteurs`, {
+      context: contexte({ libelle: 'Impossible de charger vos conversations' })
+    });
+  }
+
+  /**
+   * Envoie un message, et RENVOIE l'Observable au lieu de s'y abonner ici.
+   *
+   * Avant les abonnements, un envoi ne pouvait échouer que par panne : la page
+   * vidait son champ sans attendre. Désormais le serveur peut REFUSER (403, si
+   * l'on ne suit plus la personne), et vider le champ avant de connaître la
+   * réponse effacerait un texte parti nulle part. Seul l'appelant sait quoi
+   * faire du succès — vider SON formulaire : c'est le raisonnement déjà suivi
+   * par AuthService.connexion.
+   */
+  envoyer(destinataireId: number, contenu: string): Observable<Message> {
+    return this.http.post<Message>(this.apiUrl, { destinataireId, contenu }, {
       context: contexte({ libelle: 'Impossible d\'envoyer le message' })
     }).pipe(
-      catchError(() => EMPTY)
-    ).subscribe(message => {
       // On ajoute la réponse du serveur au fil sans attendre le prochain tour
       // du timer : son propre message doit apparaître instantanément. Elle
       // seule porte l'id et la date d'envoi réels (même raisonnement que pour
-      // addContact).
-      this.filSignal.update(fil => [...fil, message]);
-    });
+      // addContact). tap ne s'exécute pas en cas d'échec : un message refusé
+      // n'apparaît pas dans le fil.
+      tap(message => this.filSignal.update(fil => [...fil, message]))
+    );
   }
 
   /**

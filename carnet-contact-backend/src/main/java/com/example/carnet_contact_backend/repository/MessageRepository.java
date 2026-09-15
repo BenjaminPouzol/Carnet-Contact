@@ -43,4 +43,14 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     @Query("DELETE FROM Message m WHERE m.expediteur.id = :utilisateurId "
             + "OR m.destinataire.id = :utilisateurId")
     void supprimerCeuxDe(@Param("utilisateurId") Long utilisateurId);
+
+    // Qui m'a déjà écrit : ceux-là, je peux leur répondre sans les suivre.
+    // DISTINCT : un identifiant par personne, pas un par message.
+    @Query("SELECT DISTINCT m.expediteur.id FROM Message m WHERE m.destinataire.id = :id")
+    List<Long> idsQuiMOntEcrit(@Param("id") Long id);
+
+    // À qui j'ai déjà écrit : la conversation reste dans ma liste, même si je
+    // ne peux plus y répondre.
+    @Query("SELECT DISTINCT m.destinataire.id FROM Message m WHERE m.expediteur.id = :id")
+    List<Long> idsAQuiJAiEcrit(@Param("id") Long id);
 }

@@ -4,6 +4,7 @@ import { ButtonModule } from 'primeng/button';
 import { PublicationService } from '../../services/publication';
 import { EtatHttpService } from '../../services/etat-http';
 import { CATEGORIES, Categorie, DemandePublication, Publication } from '../../publication.model';
+import { ChampImage } from '../champ-image/champ-image';
 
 /** La même limite que la colonne et le @Size du serveur. */
 const LONGUEUR_MAX_CONTENU = 2000;
@@ -24,7 +25,7 @@ let prochainNumero = 1;
 
 @Component({
   selector: 'app-publication-form',
-  imports: [ReactiveFormsModule, ButtonModule],
+  imports: [ReactiveFormsModule, ButtonModule, ChampImage],
   templateUrl: './publication-form.html',
   styleUrl: './publication-form.css'
 })

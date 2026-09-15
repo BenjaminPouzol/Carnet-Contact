@@ -12,7 +12,7 @@
         {{ (utilisateur()?.nomAffichage || '?').charAt(0).toUpperCase() }}
       </span>
     }
-    <p class="muet aide">Collez l'adresse d'une image en ligne.</p>
+    <p class="muet aide">Collez une adresse, ou choisissez une image sur votre appareil.</p>
   </div>
 
   <form [formGroup]="formulaire" (ngSubmit)="onSubmit()" class="formulaire-profil">
@@ -21,9 +21,55 @@
       <input pInputText id="nomAffichage" formControlName="nomAffichage" placeholder="Votre nom" />
     </div>
 
-    <div class="champ">
-      <label for="photoUrl">Photo de profil (URL)</label>
-      <input pInputText id="photoUrl" formControlName="photoUrl" placeholder="https://exemple.fr/moi.jpg" />
+    <!-- L'aperçu ci-dessus lit la valeur du contrôle : une image envoyée
+         s'y affiche dès que son adresse arrive, sans rien de plus à écrire. -->
+    <app-champ-image
+      class="champ"
+      identifiant="photoUrl"
+      libelle="Photo de profil"
+      placeholder="https://exemple.fr/moi.jpg"
+      [controle]="formulaire.controls.photoUrl" />
+
+    <!-- <fieldset> + <legend> : la façon HTML de dire « ces champs vont
+         ensemble ». Un lecteur d'écran annonce la légende en entrant dans le
+         groupe — l'information « visible par vos abonnés » n'est donc pas
+         seulement visuelle. -->
+    <fieldset class="bloc-visible">
+      <legend>Visible par les personnes qui vous suivent</legend>
+      <p class="muet aide-visible">Votre email de connexion, lui, n'est jamais montré.</p>
+
+      <div class="champ">
+        <label for="emailPro">Email professionnel</label>
+        <input pInputText id="emailPro" type="email" formControlName="emailPro"
+               placeholder="vous@entreprise.fr" />
+        @if (formulaire.controls.emailPro.invalid && formulaire.controls.emailPro.touched) {
+          <p class="erreur-champ">Format d'adresse invalide.</p>
+        }
+      </div>
+
+      <div class="grille">
+        <!-- Préfixe « profil- » dans les id : la page ne contient qu'un
+             formulaire, mais un id nu comme « instagram » pourrait entrer en
+             collision avec un autre composant affiché en même temps. -->
+        @for (reseau of reseaux; track reseau.cle) {
+          <div>
+            <label [for]="'profil-' + reseau.cle">{{ reseau.nom }}</label>
+            <input pInputText [id]="'profil-' + reseau.cle" [formControlName]="reseau.cle"
+                   placeholder="@pseudo" />
+          </div>
+        }
+      </div>
+    </fieldset>
+
+    <div class="case">
+      <input type="checkbox" id="comptePrive" formControlName="comptePrive" />
+      <div>
+        <label for="comptePrive">Compte privé</label>
+        <p class="muet">
+          Suivre votre compte demandera votre accord, et vos publications ne seront
+          visibles que de vos abonnés. Repasser en public accepte les demandes en attente.
+        </p>
+      </div>
     </div>
 
     <p class="muet email-fixe">

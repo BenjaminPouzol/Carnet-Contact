@@ -62,3 +62,10 @@
 .vide {
   text-align: center;
 }
+
+/* La rangée « Tout le monde / Abonnements » reste collée aux catégories : les
+   deux rangées forment un seul bloc de filtres. Même spécificité que .filtres,
+   déclarée après : c'est elle qui l'emporte. */
+.portee {
+  margin-bottom: 0.5rem;
+}

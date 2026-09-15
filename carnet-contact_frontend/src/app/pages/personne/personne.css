@@ -1,0 +1,105 @@
+:host {
+  display: grid;
+  gap: 1rem;
+}
+
+.entete-personne {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.25rem;
+  border-top: 4px solid var(--bleu);
+}
+
+.grand-avatar {
+  flex-shrink: 0;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar-lettre {
+  display: grid;
+  place-items: center;
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--bleu), var(--rouge));
+}
+
+/* Le nom prend la place disponible ; sur un écran étroit, les actions passent
+   sous l'identité plutôt que de l'écraser. */
+.identite {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.identite h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.cadenas {
+  font-size: 1rem;
+  color: var(--texte-doux);
+}
+
+.compteurs {
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.vous-suit {
+  display: inline-block;
+  margin-top: 0.4rem;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--bleu-fonce);
+  background: var(--bleu-pale);
+  border-radius: 999px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.question {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--rouge-fonce);
+}
+
+.coordonnees h3,
+.publications h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+}
+
+.email-pro {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+}
+
+.liste-publications {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suite {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}

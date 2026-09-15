@@ -426,4 +426,133 @@ class PublicationControllerTest {
                         .content("{\"emoji\":\"🦆\"}"))
                 .andExpect(status().isBadRequest());
     }
+
+    // --- Abonnements, comptes privés et blocages ----------------------------
+
+    @Autowired
+    private com.example.carnet_contact_backend.repository.AbonnementRepository abonnementRepository;
+
+    @Autowired
+    private com.example.carnet_contact_backend.repository.BlocageRepository blocageRepository;
+
+    private void suit(Utilisateur abonne, Utilisateur suivi,
+                      com.example.carnet_contact_backend.model.StatutAbonnement statut) {
+        var abonnement = new com.example.carnet_contact_backend.model.Abonnement();
+        abonnement.setAbonne(abonne);
+        abonnement.setSuivi(suivi);
+        abonnement.setStatut(statut);
+        abonnement.setDateDemande(Instant.now());
+        abonnementRepository.save(abonnement);
+    }
+
+    private void bloque(Utilisateur bloqueur, Utilisateur bloque) {
+        var blocage = new com.example.carnet_contact_backend.model.Blocage();
+        blocage.setBloqueur(bloqueur);
+        blocage.setBloque(bloque);
+        blocage.setDateBlocage(Instant.now());
+        blocageRepository.save(blocage);
+    }
+
+    private void rendrePrive(Utilisateur compte) {
+        compte.setComptePrive(true);
+        utilisateurRepository.save(compte);
+    }
+
+    @Test
+    @DisplayName("Le filtre « abonnements » ne garde que les comptes suivis")
+    void filtreAbonnements_neGardeQueLesComptesSuivis() throws Exception {
+        Utilisateur dave = creer("dave@exemple.fr", "Dave", Role.UTILISATEUR);
+        suit(alice, bob, com.example.carnet_contact_backend.model.StatutAbonnement.ACCEPTE);
+        enregistrer(bob, "de Bob");
+        enregistrer(dave, "de Dave");
+
+        lireFil(jetonAlice, "?abonnements=true")
+                .andExpect(jsonPath("$.publications.length()").value(1))
+                .andExpect(jsonPath("$.publications[0].contenu").value("de Bob"));
+
+        // Sans le filtre, tout le monde reste visible.
+        lireFil(jetonAlice, "")
+                .andExpect(jsonPath("$.publications.length()").value(2));
+    }
+
+    @Test
+    @DisplayName("Une demande en attente ne fait pas entrer le compte dans le filtre « abonnements »")
+    void filtreAbonnements_ignoreLesDemandesEnAttente() throws Exception {
+        Utilisateur dave = creer("dave@exemple.fr", "Dave", Role.UTILISATEUR);
+        suit(alice, dave, com.example.carnet_contact_backend.model.StatutAbonnement.EN_ATTENTE);
+        enregistrer(dave, "de Dave");
+
+        lireFil(jetonAlice, "?abonnements=true")
+                .andExpect(jsonPath("$.publications.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("Le filtre « auteur » ne garde que ses publications")
+    void filtreAuteur() throws Exception {
+        enregistrer(alice, "d'Alice");
+        enregistrer(bob, "b1");
+        enregistrer(bob, "b2");
+
+        lireFil(jetonAlice, "?auteur=" + bob.getId())
+                .andExpect(jsonPath("$.publications.length()").value(2))
+                .andExpect(jsonPath("$.publications[0].contenu").value("b2"))
+                .andExpect(jsonPath("$.publications[1].contenu").value("b1"));
+    }
+
+    /**
+     * Une seule publication, quatre regards : un inconnu ne la voit pas ; son
+     * auteur, un administrateur et un abonné accepté la voient.
+     */
+    @Test
+    @DisplayName("Un compte privé n'est lu que par lui-même, un administrateur et ses abonnés acceptés")
+    void comptePrive_visibleSelonLaRelation() throws Exception {
+        rendrePrive(bob);
+        enregistrer(bob, "privé");
+
+        lireFil(jetonAlice, "").andExpect(jsonPath("$.publications.length()").value(0));
+        lireFil(jetonBob, "").andExpect(jsonPath("$.publications.length()").value(1));
+        lireFil(jetonAdmin, "").andExpect(jsonPath("$.publications.length()").value(1));
+
+        suit(alice, bob, com.example.carnet_contact_backend.model.StatutAbonnement.ACCEPTE);
+        lireFil(jetonAlice, "").andExpect(jsonPath("$.publications.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("Demander à suivre un compte privé ne suffit pas pour le lire")
+    void comptePrive_demandeEnAttenteNeSuffitPas() throws Exception {
+        rendrePrive(bob);
+        enregistrer(bob, "privé");
+        suit(alice, bob, com.example.carnet_contact_backend.model.StatutAbonnement.EN_ATTENTE);
+
+        lireFil(jetonAlice, "").andExpect(jsonPath("$.publications.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("Un blocage retire les publications du fil, dans les deux sens")
+    void blocage_exclutDansLesDeuxSens() throws Exception {
+        enregistrer(bob, "de Bob");
+        enregistrer(alice, "d'Alice");
+        bloque(bob, alice);
+
+        lireFil(jetonAlice, "")
+                .andExpect(jsonPath("$.publications.length()").value(1))
+                .andExpect(jsonPath("$.publications[0].contenu").value("d'Alice"));
+        lireFil(jetonBob, "")
+                .andExpect(jsonPath("$.publications.length()").value(1))
+                .andExpect(jsonPath("$.publications[0].contenu").value("de Bob"));
+    }
+
+    /** Connaître un identifiant ne doit pas suffire à atteindre une publication qu'on ne peut pas lire. */
+    @Test
+    @DisplayName("Réagir à une publication invisible renvoie 404")
+    void reagir_surUnePublicationInvisible_renvoie404() throws Exception {
+        rendrePrive(bob);
+        Publication secrete = enregistrer(bob, "privé");
+
+        mockMvc.perform(put("/api/publications/" + secrete.getId() + "/reaction")
+                        .header("Authorization", "Bearer " + jetonAlice)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"emoji\":\"👍\"}"))
+                .andExpect(status().isNotFound());
+    }
 }

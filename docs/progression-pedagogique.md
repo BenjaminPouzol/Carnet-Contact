@@ -883,9 +883,249 @@ sommaire), corrigée. Non vérifié : le rendu visuel des schémas, faute de mot
 Mermaid disponible hors ligne — à contrôler sur GitHub ou dans VS Code avec
 l'extension.
 
+### Partie 15 — Envoi d'images depuis l'appareil
+Demande de l'utilisateur : pouvoir envoyer une image depuis son ordinateur, et
+ne plus dépendre uniquement d'une URL. Ajoutée en cours de conception : qu'une
+image envoyée puis devenue inutile soit supprimée.
+
+Incident de départ, à retenir. La première formulation (« que les images ne
+puissent être téléchargées et plus uniquement être mises via un lien ») a d'abord
+été comprise à l'envers : l'assistant a vérifié le code, constaté qu'aucun envoi
+de fichier n'existait, et répondu que la demande était déjà satisfaite. La
+reformulation de l'utilisateur a levé l'ambiguïté. Réflexe à garder : quand une
+demande semble déjà réalisée, c'est souvent qu'elle a été mal lue — reformuler
+avant de conclure.
+
+Méthode : conception validée avant le code, par questions successives, puis spec
+(`docs/superpowers/specs/2026-09-15-envoi-images-design.md`) et plan
+(`docs/superpowers/plans/2026-09-15-envoi-images.md`). Choix de l'utilisateur :
+- Portée : **photo de profil, photo d'un contact, image d'une publication**
+- Stockage : **en base** (colonne BLOB) — cohérent avec H2 en mémoire, où un
+  dossier sur disque aurait survécu aux données qui le référencent
+- Limites : **5 Mo, JPEG / PNG / WebP / GIF**
+- Rythme : **livraison complète**
+- Approche : **une route d'envoi dédiée qui renvoie une URL**, parmi trois
+  proposées (fichier joint à chaque formulaire, ou image encodée en base64 dans
+  le champ — écartées pour le nombre de contrats d'API à changer et le poids des
+  réponses JSON)
+- Nettoyage : **tâche planifiée seule**, plutôt que suppression immédiate dans
+  chaque route qui change une image
+
+Premier travail mené sur une **branche** (`envoi-images-abonnements`) plutôt que
+directement sur `main` : la fonctionnalité suivante (abonnements) s'enchaîne
+dessus, et la fusion se fera une fois l'ensemble vérifié.
+
+#### Backend
+131. **Une image envoyée devient une URL comme une autre.** `POST /api/images`
+     range les octets et renvoie une adresse, que le frontend place dans le champ
+     qui existait déjà. Aucune colonne ajoutée à `Contact`, `Utilisateur` ni
+     `Publication`, et les huit `<img>` du frontend inchangés
+132. **Lecture publique par UUID.** Une balise `<img>` n'envoie pas le jeton et
+     ne passe pas par les intercepteurs : `GET /api/images/*` est en
+     `permitAll`, le `POST` reste protégé. L'identifiant aléatoire est la seule
+     protection — le même niveau qu'une URL externe
+133. **Adresse absolue**, construite par `ServletUriComponentsBuilder` à partir
+     de la requête reçue. Une adresse relative aurait visé le serveur Angular.
+     Vérifié au `curl` : sur le port 8125, l'adresse renvoyée portait bien 8125
+134. **Le format se lit dans les octets** (`FormatImage`), jamais dans le nom ni
+     dans le `Content-Type` annoncé. SVG volontairement exclu : du texte qui peut
+     porter du JavaScript. 415 pour un format refusé
+135. `@Lob byte[]` pour les octets, `GenerationType.UUID` pour l'identifiant,
+     `Cache-Control: immutable` à la lecture (le contenu d'un identifiant ne
+     change jamais)
+136. **Nettoyage planifié** (`@Scheduled`, `@EnableScheduling`) : une seule
+     requête `DELETE … NOT EXISTS` sur les trois tables, avec un **délai de
+     grâce** d'une heure — une image fraîchement envoyée n'est encore référencée
+     par rien tant que son formulaire n'est pas enregistré. La date limite est un
+     paramètre, pour qu'un test simule « il y a une heure » sans attendre
+137. `@Transactional` posé sur la méthode du **dépôt** et non du service : la
+     méthode planifiée appelle le service de l'intérieur, et un appel interne ne
+     traverse pas le proxy qui ouvre les transactions
+138. Suppression d'un compte : ses images partent avec lui — la tâche de
+     nettoyage n'aurait agi qu'une heure plus tard, et la clé étrangère aurait
+     bloqué la suppression entre-temps. Le test l'a montré avant le correctif
+
+#### Frontend
+139. `ImageService` : `FormData`, et **aucun `Content-Type` écrit à la main** —
+     le navigateur doit y ajouter la frontière entre les parties. Un test le vérifie
+140. Composant `champ-image` : champ URL + bouton qui déclenche un
+     `<input type="file">` caché. Il reçoit le `FormControl` du parent en
+     `input()` plutôt que d'implémenter `ControlValueAccessor` ; le parent ne voit
+     qu'une adresse. Vérification locale de la taille et du format (confort, pas
+     sécurité), `value` du sélecteur vidée après chaque choix, état en signaux
+     (l'application tourne sans zone.js)
+141. Intégré aux quatre formulaires. Les aperçus existants (profil, publication)
+     fonctionnent sans modification ; pendant l'envoi, `chargementInterceptor`
+     grise déjà les boutons d'enregistrement
+142. `erreurInterceptor` traduit 413 et 415
+
+#### Incidents
+- `Could not resolve placeholder 'carnet.images.delai-grace-ms'` dans les tests
+  seulement : `src/test/resources/application.properties` **remplace** celui de
+  `main` au lieu de s'y ajouter. Le test d'envoi passait par chance (la limite
+  par défaut de 1 Mo suffisait à un PNG de 12 octets)
+- `'app-champ-image' is not a known element` : l'`import` TypeScript avait été
+  ajouté, pas l'entrée du tableau `imports` du composant
+
+#### Vérifications faites
+- Backend : 113 tests au vert (91 → 113 : 9 sur la signature, 7 sur la route, 5
+  sur le nettoyage, 1 sur la suppression d'un compte). Frontend : 94 tests au
+  vert (88 → 94)
+- `ng build` sans avertissement ; paquet initial de 951 à 953 kB
+- `curl` contre le vrai serveur sur le port 8125 (vérifié libre avant, arrêté
+  après) : envoi 201, lecture **sans jeton** 200 avec le bon type, l'en-tête de
+  cache et des octets identiques, faux JPEG 415, envoi sans jeton 401, fichier
+  de 5,5 Mo **413** — et 413 aussi à 20 Mo, sans coupure de connexion : le
+  gestionnaire d'exception prévu en secours s'est révélé inutile
+- Non vérifié : le parcours dans un navigateur (bouton, sélecteur de fichiers,
+  aperçu après envoi) ; la tâche planifiée en conditions réelles, testée
+  seulement par appel direct de `nettoyer(limite)`
+
+Notions ajoutées au support : **section 36 « Envoi de fichiers »**. Entrées
+ajoutées au pense-bête. Sections Backend / Git / Pense-bête renumérotées
+37 / 38 / 39, renvois corrigés (dont le lien du cours Angular).
+
+### Partie 16 — Abonnements, comptes privés et blocages
+Demande de l'utilisateur : pouvoir suivre des personnes qu'on ne connaissait pas,
+pour retrouver plus facilement leurs publications dans le fil. La liste des
+abonnements doit rester distincte des contacts. Suivre quelqu'un doit permettre
+de lui écrire et de voir son email professionnel et ses réseaux sociaux — jamais
+son email personnel ni son téléphone.
+
+Méthode : même déroulé que la Partie 15 — questions successives, spec
+(`docs/superpowers/specs/2026-09-15-abonnements-design.md`) et plan
+(`docs/superpowers/plans/2026-09-15-abonnements.md`), sur la même branche
+`envoi-images-abonnements`. Choix de l'utilisateur :
+- Profil : **email professionnel + six réseaux sociaux**, aucun téléphone
+- Messagerie : **écrire aux comptes qu'on suit, et répondre à qui nous a écrit**
+- Compte public : **abonnement immédiat**, sans demande
+- Découverte : **bouton sur chaque carte du fil, page de recherche, page d'une
+  personne**
+- Puis, à la relecture du plan : **intégrer tout ce qui était classé hors
+  périmètre** — blocage et retrait d'un abonné, suggestions de comptes,
+  notifications « X vous suit », comptes privés avec demandes. Compris comme la
+  liste hors périmètre des abonnements, pas celle des images
+
+#### Backend
+143. **Table de liaison à statut** : `Abonnement` (`EN_ATTENTE` / `ACCEPTE`,
+     contrainte d'unicité sur le couple), écrite à la main plutôt qu'un
+     `@ManyToMany` qui ne sait stocker que le couple. `Blocage` dans sa propre
+     table : bloquer supprime les abonnements, un statut « bloqué » disparaîtrait
+     avec eux
+144. **Les règles à un seul endroit, les données chargées une fois** :
+     `Relations.vuePour(moi)` lit toutes les relations en cinq requêtes, quelle
+     que soit la taille de l'affichage ; `VueRelations` répond en mémoire
+     (`voitContenu`, `voitCoordonnees`, `peutEcrire`). Aucune dépendance à
+     Spring : 15 cas testés en construisant les ensembles à la main
+145. **La même règle réécrite en JPQL** dans la requête du fil (compte privé,
+     blocage dans les deux sens, filtre « Mes abonnements », filtre par auteur) :
+     filtrer en Java après coup aurait cassé le curseur de la section 34
+146. **Liste blanche** : `CompteResume`, `ProfilPublic`, `CoordonneesPro`.
+     `coordonnees` vaut `null` sans abonnement — le client ne reçoit pas ce qu'il
+     n'a pas le droit de voir. L'email de connexion ne figure dans aucun objet
+     montré aux autres. 404 pour un compte inconnu, désactivé ou bloqué ; 403 pour
+     un message à un compte qu'on ne suit pas
+147. Routes d'abonnement idempotentes (`PUT` / `DELETE /api/abonnements/{id}`),
+     demandes reçues (accepter, refuser), retrait d'un abonné, blocage et
+     déblocage. Repasser son compte en public accepte les demandes en attente
+148. **Suggestions par agrégation** : auto-jointure, `GROUP BY` et `COUNT` pour
+     les « amis d'amis », puis les plus suivis, puis les derniers inscrits,
+     fusionnés par `LinkedHashMap.putIfAbsent`
+149. **Notifications enregistrées** (nouvel abonné, demande reçue, demande
+     acceptée), retirées quand elles cessent d'être vraies
+150. Messagerie : `GET /api/messages/interlocuteurs` (comptes suivis et
+     conversations existantes, avec `peutEcrire`) ; les non-lus ignorent les
+     comptes bloqués
+151. Profil : email professionnel validé (`@Email`), six réseaux, `comptePrive`
+     en `nullable = false`. Recherche de comptes sans les comptes bloqués
+152. Supprimer un compte emporte ses notifications, blocages et abonnements, dans
+     les deux sens. Le test a montré la violation de clé étrangère avant le
+     correctif
+153. **L'ordre des opérations autour de `@Modifying(clearAutomatically = true)`** :
+     une requête de suppression en masse détache tout ce qui avait été chargé.
+     Enregistrer le nouveau statut et créer la notification d'abord, retirer les
+     anciennes notifications ensuite
+
+#### Frontend
+154. `AbonnementService` : une `Map` identifiant → statut dans un signal,
+     **remplacée** à chaque changement (un signal ne prévient que si la référence
+     change). `BoutonSuivre` ne garde aucun état et prévient son parent par
+     `output()` ; `CarteCompte` projette ses actions par `<ng-content>`
+155. Fil : filtre « Mes abonnements », nom de l'auteur cliquable, bouton Suivre
+     sur chaque carte
+156. Page d'une personne : `paramMap` en Observable avec `takeUntilDestroyed()`
+     (le routeur réutilise le composant d'une personne à l'autre), coordonnées ou
+     explication, publications seulement si le serveur les dit visibles, blocage
+     avec confirmation sur place
+157. Page Abonnements : activité récente (marquée lue à l'ouverture), demandes
+     reçues, recherche (`debounceTime` + `switchMap`), suggestions, abonnements,
+     abonnés, comptes bloqués. Lien de navigation avec pastille
+158. `ActiviteService` : sondage des notifications sur le patron exact des
+     messages non lus. `NotificationService.notifier` reçoit désormais le lien à
+     ouvrir. Phrases par `Record<TypeNotification, …>` : un type oublié ne
+     compile pas
+159. Profil : email professionnel (`Validators.email`), réseaux générés depuis
+     `RESEAUX`, case « Compte privé ». `modifierProfil` prend un objet plutôt que
+     dix chaînes de suite
+160. Messagerie : liste des conversations fournie par le serveur, `?avec=` lu
+     dans le `snapshot`, conversation en lecture seule avec un bouton Suivre à la
+     place du champ, sélection gardée par **identifiant** + `computed()`, champ
+     vidé seulement après la réponse du serveur. `autresUtilisateurs()` supprimé
+
+#### Incidents
+- Deux fois, une modification **annoncée n'a pas été faite** : la réécriture de la
+  requête du fil (seule la ligne d'import était partie — le contrôleur ne
+  compilait plus), puis le bouton Suivre dans la carte de publication (seul
+  l'import était ajouté, et l'IDE a signalé « BoutonSuivre is not used »).
+  Réflexe à garder : annoncer un changement ne vaut pas l'avoir fait — relire les
+  diagnostics avant de passer à la suite
+- L'échec attendu pour `/api/messages/interlocuteurs`, avant la création de la
+  route, était un 404 ; le test a reçu un 400, parce que `/{autreId}` captait
+  l'adresse. L'écart a été expliqué au lieu d'être ignoré
+- Un nombre de tests frontend annoncé à 127 au lieu de 126, corrigé
+- `Object is possibly 'undefined'` sur `selection()?.compte.id` : l'assistant avait
+  retiré un `?.` jugé superflu, à tort — le vérificateur de gabarits d'Angular ne
+  court-circuite pas toute la chaîne comme TypeScript. Remis
+- Suppression d'un compte bloquée par `ABONNEMENT.ABONNE_ID`, révélée par le test
+  écrit avant le correctif
+
+#### Vérifications faites
+- Backend : 183 tests au vert (113 → 183). Frontend : 136 tests au vert
+  (94 → 136)
+- `ng build` sans avertissement ; paquet initial de 953 à **987,5 kB**, soit
+  environ 12 kB sous l'alerte fixée à 1 Mo
+- `curl` contre le vrai serveur sur le port 8126 (vérifié libre avant, arrêté
+  après), avec quatre comptes : profil d'un compte privé non suivi sans
+  coordonnées ni clé `email`, sa publication absente du fil, message refusé en
+  403 ; demande `EN_ATTENTE`, rejouée sans doublon ; notification
+  `DEMANDE_RECUE`, acceptation 204 ; puis coordonnées visibles, notification
+  `DEMANDE_ACCEPTEE`, publication dans « Mes abonnements », message accepté, et
+  l'expéditrice dans les interlocuteurs du destinataire avec `peutEcrire` ;
+  suggestion « ami d'ami » avec `enCommun = 1` ; après un blocage, profil 404,
+  recherche vide, abonnement 404, absent des suggestions ; suppression d'un
+  compte par l'administrateur 204, sans abonnement, notification ni conversation
+  restante chez les autres
+- Non vérifié : le parcours dans un navigateur (pages Abonnements et Personne,
+  messagerie en lecture seule, case « Compte privé ») ; les notifications
+  système d'abonnement en conditions réelles
+
+Notions ajoutées au support : **section 37 « Relations entre comptes :
+abonnements, comptes privés et blocages »**. Six entrées ajoutées au pense-bête.
+Sections Backend / Git / Pense-bête renumérotées 38 / 39 / 40, renvois corrigés
+(dont le lien du cours Angular).
+
 ## Ce qui était prévu ensuite (pas encore fait)
 
 ### Pistes suivantes envisagées (mentionnées mais non détaillées)
+- Poids du paquet : 987,5 kB pour une alerte à 1 Mo. Avant la prochaine
+  fonctionnalité, différer les pages Abonnements et Personne avec
+  `loadComponent` (section 30) plutôt que relever le budget
+- Abonnements, points laissés de côté :
+  - Le bouton Suivre de la messagerie et des cartes du fil ne connaît pas
+    `comptePrive` (absent d'`AuteurPublic`) : il affiche « Suivre » là où la
+    page d'une personne affiche « Demander à suivre »
+  - Les compteurs d'abonnés et d'abonnements d'une personne ne mènent à aucune
+    liste
 - Vérification visuelle **reproductible** : le parcours complet a été validé à
   la main une fois, mais rien ne le rejouera. Piloter un vrai navigateur
   (session comprise) permettrait de capturer les pages authentifiées à chaque

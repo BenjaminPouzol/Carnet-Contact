@@ -85,6 +85,13 @@ public class SecurityConfig {
                         // Console H2, pratique en développement.
                         .requestMatchers("/h2-console/**").permitAll()
 
+                        // Les images sont affichées par des balises <img>, qui
+                        // n'envoient jamais le jeton : leur lecture doit être
+                        // publique. Seul le GET est ouvert — ENVOYER une image
+                        // reste réservé aux comptes connectés. L'identifiant,
+                        // un UUID aléatoire, ne se devine pas.
+                        .requestMatchers(HttpMethod.GET, "/api/images/*").permitAll()
+
                         // Le panel d'administration exige le rôle ADMIN, en un
                         // seul endroit pour toutes ses routes. On pourrait
                         // aussi annoter chaque méthode (@PreAuthorize), mais

@@ -324,6 +324,27 @@
   flex-shrink: 0;
 }
 
+/* --- Conversation en lecture seule --------------------------------------- */
+
+/* Même place et même trait que la zone de saisie qu'il remplace : l'oeil
+   retrouve le bas de la conversation au même endroit. flex-wrap renvoie le
+   bouton sous la phrase quand la colonne est étroite. */
+.lecture-seule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--bordure);
+}
+
+.lecture-seule p {
+  flex: 1 1 18rem;
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .vide {
   padding: 2rem 0;
   text-align: center;

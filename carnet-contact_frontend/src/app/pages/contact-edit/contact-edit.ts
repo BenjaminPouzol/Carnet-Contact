@@ -6,10 +6,11 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ContactService } from '../../services/contact';
 import { EtatHttpService } from '../../services/etat-http';
 import { Contact, RESEAUX } from '../../contact.model';
+import { ChampImage } from '../../components/champ-image/champ-image';
 
 @Component({
   selector: 'app-contact-edit',
-  imports: [ReactiveFormsModule, RouterLink, ButtonModule, InputTextModule],
+  imports: [ReactiveFormsModule, RouterLink, ButtonModule, InputTextModule, ChampImage],
   templateUrl: './contact-edit.html',
   styleUrl: './contact-edit.css'
 })

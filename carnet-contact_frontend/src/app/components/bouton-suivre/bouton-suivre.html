@@ -1,0 +1,15 @@
+<!-- Sur son propre compte, il n'y a rien à proposer : le bouton disparaît
+     plutôt que de s'afficher désactivé. -->
+@if (!estMoi()) {
+  <!-- Plein quand il invite à agir (« Suivre »), en contour une fois la
+       relation établie : l'œil distingue l'appel à l'action de l'état acquis. -->
+  <p-button
+    size="small"
+    [label]="libelle()"
+    [icon]="icone()"
+    [outlined]="statut() !== 'AUCUN'"
+    [severity]="statut() === 'AUCUN' ? undefined : 'secondary'"
+    [disabled]="enCours()"
+    [attr.title]="infobulle()"
+    (onClick)="basculer()" />
+}

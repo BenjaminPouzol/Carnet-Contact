@@ -53,6 +53,16 @@ describe('erreurInterceptor', () => {
       .toBe('Impossible de charger les contacts : le serveur a rencontré une erreur interne (500).');
   });
 
+  it('explique un fichier trop volumineux (413) et un format refusé (415)', () => {
+    http.post('/api/images', {}).subscribe({ error: () => {} });
+    backend.expectOne('/api/images').flush('', { status: 413, statusText: 'Payload Too Large' });
+    expect(etat.erreur()).toBe('L\'image dépasse la taille autorisée (413).');
+
+    http.post('/api/images', {}).subscribe({ error: () => {} });
+    backend.expectOne('/api/images').flush('', { status: 415, statusText: 'Unsupported Media Type' });
+    expect(etat.erreur()).toBe('Ce format de fichier n\'est pas accepté (415).');
+  });
+
   it('se rabat sur la seule raison technique quand aucun libellé n\'est fourni', () => {
     http.get('/api/quelquechose').subscribe({ error: () => {} });
 

@@ -1,10 +1,12 @@
 package com.example.carnet_contact_backend.controller;
 
+import com.example.carnet_contact_backend.abonnement.Relations;
 import com.example.carnet_contact_backend.controller.Reactions.ReactionResume;
 import com.example.carnet_contact_backend.model.Categorie;
 import com.example.carnet_contact_backend.model.Publication;
 import com.example.carnet_contact_backend.model.ReactionPublication;
 import com.example.carnet_contact_backend.model.Role;
+import com.example.carnet_contact_backend.model.StatutAbonnement;
 import com.example.carnet_contact_backend.model.Utilisateur;
 import com.example.carnet_contact_backend.repository.PublicationRepository;
 import com.example.carnet_contact_backend.repository.ReactionPublicationRepository;
@@ -27,8 +29,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Le fil d'actualité : un espace PUBLIC, commun à tous les comptes, où chacun
- * parle de ses hobbies.
+ * Le fil d'actualité : un espace commun à tous les comptes, où chacun parle de
+ * ses hobbies.
+ *
+ * « Commun », avec deux exceptions arrivées avec les abonnements : un compte
+ * privé n'est lu que par ses abonnés acceptés, et un blocage retire les
+ * publications de part et d'autre.
  */
 @RestController
 @RequestMapping("/api/publications")
@@ -40,14 +46,17 @@ public class PublicationController {
     private final PublicationRepository publicationRepository;
     private final ReactionPublicationRepository reactionRepository;
     private final UtilisateurRepository utilisateurRepository;
+    private final Relations relations;
 
     public PublicationController(
             PublicationRepository publicationRepository,
             ReactionPublicationRepository reactionRepository,
-            UtilisateurRepository utilisateurRepository) {
+            UtilisateurRepository utilisateurRepository,
+            Relations relations) {
         this.publicationRepository = publicationRepository;
         this.reactionRepository = reactionRepository;
         this.utilisateurRepository = utilisateurRepository;
+        this.relations = relations;
     }
 
     /**
@@ -106,12 +115,20 @@ public class PublicationController {
      *
      * Une catégorie inconnue dans l'URL (`?categorie=PEINTURE`) ne peut pas être
      * convertie en Categorie : Spring répond 400 avant même d'entrer ici.
+     *
+     * Deux filtres se combinent avec la catégorie : `abonnements=true` (seulement
+     * les comptes que je suis) et `auteur=<id>` (la page d'une personne). Les
+     * règles de visibilité — comptes privés, blocages — s'appliquent toujours,
+     * filtre ou pas : elles sont écrites DANS la requête (voir
+     * PublicationRepository.fil).
      */
     @GetMapping
     public PageFil fil(
             @RequestParam(required = false) Categorie categorie,
             @RequestParam(required = false) Long avant,
             @RequestParam(defaultValue = "10") int taille,
+            @RequestParam(defaultValue = "false") boolean abonnements,
+            @RequestParam(required = false) Long auteur,
             @AuthenticationPrincipal String email) {
 
         Utilisateur moi = utilisateurConnecte(email);
@@ -120,7 +137,9 @@ public class PublicationController {
         // Une ligne de PLUS que demandé : le moyen le plus économe de savoir
         // s'il reste des publications plus anciennes, sans requête COUNT.
         List<Publication> lues = publicationRepository.fil(
-                categorie, avant, PageRequest.of(0, tailleBornee + 1));
+                categorie, avant, auteur, abonnements,
+                moi.getId(), moi.getRole() == Role.ADMIN, StatutAbonnement.ACCEPTE,
+                PageRequest.of(0, tailleBornee + 1));
 
         boolean resteDesPlusAnciennes = lues.size() > tailleBornee;
         List<Publication> tranche = resteDesPlusAnciennes ? lues.subList(0, tailleBornee) : lues;
@@ -207,6 +226,14 @@ public class PublicationController {
 
         Utilisateur moi = utilisateurConnecte(email);
         Publication publication = publicationExistante(id);
+
+        // Une publication que le fil ne me montrerait pas (compte privé non
+        // suivi, blocage) ne doit pas devenir atteignable parce que j'en connais
+        // l'identifiant. 404 et non 403 : de mon point de vue, elle n'existe pas.
+        Utilisateur auteur = publication.getAuteur();
+        if (!relations.vuePour(moi).voitContenu(auteur.getId(), auteur.isComptePrive())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
 
         reactionRepository.findByPublicationIdAndUtilisateurId(id, moi.getId())
                 .ifPresentOrElse(

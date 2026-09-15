@@ -1,12 +1,30 @@
 <div class="entete-fil">
   <h2>Fil d'actualité</h2>
-  <p class="muet">Les hobbies de tout le monde, du plus récent au plus ancien.</p>
+  <p class="muet">
+    @if (abonnements()) {
+      Les publications des comptes que vous suivez, du plus récent au plus ancien.
+    } @else {
+      Les hobbies de tout le monde, du plus récent au plus ancien.
+    }
+  </p>
 </div>
 
 <section class="carte bloc-publier" aria-labelledby="titre-publier">
   <h3 id="titre-publier">Partager un hobby</h3>
   <app-publication-form />
 </section>
+
+<!-- Deux questions différentes, deux rangées de bascules : DE QUI (tout le
+     monde ou mes abonnements), puis DE QUOI (la catégorie). Elles se combinent :
+     « Sport, chez mes abonnements ». -->
+<div class="filtres portee" role="group" aria-label="Filtrer par auteurs">
+  <button type="button" class="filtre" [attr.aria-pressed]="!abonnements()" (click)="choisirPortee(false)">
+    <span class="pi pi-globe" aria-hidden="true"></span> Tout le monde
+  </button>
+  <button type="button" class="filtre" [attr.aria-pressed]="abonnements()" (click)="choisirPortee(true)">
+    <span class="pi pi-users" aria-hidden="true"></span> Abonnements
+  </button>
+</div>
 
 <!-- Des boutons à bascule (aria-pressed), et non des liens : filtrer ne change
      pas de page, cela change ce que la page montre. -->
@@ -51,7 +69,18 @@
   <!-- Le « vide » n'est affiché qu'une fois la réponse arrivée : pendant le
        chargement, « aucune publication » serait faux. -->
   <div class="carte vide">
-    @if (libelleFiltre(); as libelle) {
+    @if (abonnements()) {
+      <!-- Sous « Abonnements », un fil vide veut souvent dire « vous ne suivez
+           encore personne » : on propose la suite logique plutôt qu'un constat. -->
+      <p class="muet">
+        Aucune publication de vos abonnements
+        @if (libelleFiltre(); as libelle) {
+          dans « {{ libelle }} »
+        }
+        pour l'instant.
+      </p>
+      <p><a routerLink="/abonnements">Trouver des personnes à suivre</a></p>
+    } @else if (libelleFiltre(); as libelle) {
       <p class="muet">Aucune publication dans « {{ libelle }} » pour l'instant.</p>
     } @else {
       <p class="muet">Le fil est vide. Soyez le premier à partager un hobby !</p>

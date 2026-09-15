@@ -28,6 +28,12 @@ function raisonTechnique(erreur: HttpErrorResponse): string {
       return 'la ressource est introuvable (404)';
     case 409:
       return 'une donnée en conflit existe déjà (409)';
+    // Les deux refus propres à l'envoi d'un fichier : trop gros, ou pas une
+    // image acceptée (le serveur lit les premiers octets, pas le nom).
+    case 413:
+      return 'l\'image dépasse la taille autorisée (413)';
+    case 415:
+      return 'ce format de fichier n\'est pas accepté (415)';
     case 500:
       return 'le serveur a rencontré une erreur interne (500)';
     default:

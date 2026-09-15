@@ -2,7 +2,10 @@ package com.example.carnet_contact_backend.repository;
 
 import com.example.carnet_contact_backend.model.Role;
 import com.example.carnet_contact_backend.model.Utilisateur;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -33,4 +36,28 @@ public interface UtilisateurRepository extends JpaRepository<Utilisateur, Long> 
      * supprimer — sinon plus personne ne pourrait administrer l'application.
      */
     long countByRoleAndActifTrueAndIdNot(Role role, Long id);
+
+    /**
+     * Recherche de comptes à suivre, par nom affiché.
+     *
+     * Les comptes en relation de blocage sont exclus DANS la requête, et non
+     * après coup en Java : la limite (20 résultats) s'applique ainsi à des
+     * comptes réellement affichables. Filtrer après aurait pu rendre une page
+     * de trois résultats alors que d'autres existaient plus loin.
+     */
+    @Query("""
+            SELECT u FROM Utilisateur u
+            WHERE u.id <> :moi AND u.actif = true
+              AND LOWER(u.nomAffichage) LIKE LOWER(CONCAT('%', :terme, '%'))
+              AND NOT EXISTS (
+                    SELECT b.id FROM Blocage b
+                    WHERE (b.bloqueur.id = :moi AND b.bloque.id = u.id)
+                       OR (b.bloqueur.id = u.id AND b.bloque.id = :moi))
+            ORDER BY u.nomAffichage
+            """)
+    List<Utilisateur> rechercher(@Param("moi") Long moi, @Param("terme") String terme, Pageable limite);
+
+    // Dernier recours des suggestions, quand personne ne suit encore personne :
+    // les inscrits les plus récents. Top20 : Spring Data ajoute la limite.
+    List<Utilisateur> findTop20ByActifTrueAndIdNotOrderByDateInscriptionDesc(Long id);
 }

@@ -1,0 +1,111 @@
+@if (profil(); as p) {
+  <section class="carte entete-personne" aria-labelledby="nom-personne">
+    @if (p.photoUrl) {
+      <img class="grand-avatar" [src]="p.photoUrl" alt="" />
+    } @else {
+      <span class="grand-avatar avatar-lettre" aria-hidden="true">{{ initiale() }}</span>
+    }
+
+    <div class="identite">
+      <h2 id="nom-personne">
+        {{ p.nomAffichage }}
+        @if (p.comptePrive) {
+          <span class="pi pi-lock cadenas" role="img" aria-label="Compte privé" title="Compte privé"></span>
+        }
+      </h2>
+      <p class="muet compteurs">
+        {{ p.nombreAbonnes }} abonné{{ p.nombreAbonnes > 1 ? 's' : '' }}
+        · {{ p.nombreAbonnements }} abonnement{{ p.nombreAbonnements > 1 ? 's' : '' }}
+      </p>
+      @if (p.ilMeSuit) {
+        <span class="vous-suit">Vous suit</span>
+      }
+    </div>
+
+    <div class="actions">
+      @if (estMoi()) {
+        <a routerLink="/profil">Modifier mon profil</a>
+      } @else if (confirmationBlocage()) {
+        <span class="question" role="alert">Bloquer {{ p.nomAffichage }} ?</span>
+        <p-button label="Bloquer" severity="danger" size="small"
+          [disabled]="chargement()" (onClick)="confirmerBlocage()" />
+        <p-button label="Annuler" severity="secondary" size="small" [text]="true"
+          (onClick)="annulerBlocage()" />
+      } @else {
+        <app-bouton-suivre [compteId]="p.id" [comptePrive]="p.comptePrive" (statutChange)="recharger()" />
+
+        @if (p.peutEcrire) {
+          <!-- Un lien qui a l'apparence d'un bouton : il MÈNE à la messagerie.
+               ?avec= indique quelle conversation ouvrir. -->
+          <a pButton icon="pi pi-send" label="Écrire" size="small" severity="secondary" [outlined]="true"
+             [routerLink]="['/messages']" [queryParams]="{ avec: p.id }"></a>
+        }
+
+        @if (p.ilMeSuit) {
+          <p-button label="Retirer de mes abonnés" severity="secondary" size="small" [text]="true"
+            (onClick)="retirerDeMesAbonnes()" />
+        }
+
+        <p-button label="Bloquer" icon="pi pi-ban" severity="danger" size="small" [text]="true"
+          (onClick)="demanderBlocage()" />
+      }
+    </div>
+  </section>
+
+  <section class="carte coordonnees" aria-labelledby="titre-coordonnees">
+    <h3 id="titre-coordonnees">Coordonnées professionnelles</h3>
+
+    <!-- coordonnees vaut null tant qu'on ne suit pas la personne : le serveur
+         ne les envoie tout simplement pas. L'email de connexion, lui, n'est
+         jamais envoyé, abonnement ou non. -->
+    @if (p.coordonnees; as c) {
+      @if (coordonneesVides()) {
+        <p class="muet">Aucune coordonnée professionnelle renseignée.</p>
+      } @else {
+        @if (c.emailPro) {
+          <p class="email-pro">
+            <span class="pi pi-envelope" aria-hidden="true"></span>
+            <a [href]="'mailto:' + c.emailPro">{{ c.emailPro }}</a>
+          </p>
+        }
+        <app-reseaux-sociaux [reseaux]="c" />
+      }
+    } @else if (p.statut === 'EN_ATTENTE') {
+      <p class="muet">Votre demande est en attente : ses coordonnées s'afficheront une fois acceptée.</p>
+    } @else {
+      <p class="muet">Suivez {{ p.nomAffichage }} pour voir ses coordonnées professionnelles.</p>
+    }
+  </section>
+
+  <section class="publications" aria-labelledby="titre-publications">
+    <h3 id="titre-publications">Publications</h3>
+
+    @if (p.contenuVisible) {
+      @if (publications().length > 0) {
+        <ul class="liste-publications">
+          @for (publication of publications(); track publication.id) {
+            <li><app-publication-carte [publication]="publication" /></li>
+          }
+        </ul>
+
+        @if (aDesPlusAnciennes()) {
+          <div class="suite">
+            <p-button label="Voir plus" icon="pi pi-angle-down" severity="secondary" [outlined]="true"
+              [disabled]="chargement()" (onClick)="voirPlus()" />
+          </div>
+        }
+      } @else if (!chargement()) {
+        <p class="carte muet">Aucune publication pour l'instant.</p>
+      }
+    } @else {
+      <p class="carte muet">
+        Ce compte est privé. Ses publications sont visibles une fois votre demande acceptée.
+      </p>
+    }
+  </section>
+} @else if (introuvable()) {
+  <div class="carte">
+    <p class="muet">Compte introuvable.</p>
+    <p><a routerLink="/abonnements">Retour aux abonnements</a></p>
+  </div>
+}

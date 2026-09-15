@@ -1,0 +1,18 @@
+/* Un élément personnalisé est « inline » par défaut : sans display: block, le
+   composant ne prendrait pas toute la largeur de sa cellule de grille. */
+:host {
+  display: block;
+}
+
+.rangee {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Le champ prend la place restante ; sous 14rem, le bouton passe à la ligne
+   plutôt que d'écraser le champ (utile en colonne étroite et sur mobile). */
+.rangee input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}

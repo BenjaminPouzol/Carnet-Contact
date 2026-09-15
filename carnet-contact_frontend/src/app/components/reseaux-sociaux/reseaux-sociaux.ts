@@ -1,5 +1,5 @@
 import { Component, computed, input } from '@angular/core';
-import { Contact, RESEAUX } from '../../contact.model';
+import { RESEAUX, ReseauxRenseignes } from '../../contact.model';
 
 interface LienReseau {
   cle: string;
@@ -9,7 +9,7 @@ interface LienReseau {
 }
 
 /**
- * Affiche les liens vers les réseaux sociaux d'un contact, chacun avec son
+ * Affiche les liens vers les réseaux sociaux d'une personne, chacun avec son
  * logo, en n'affichant que ceux qui sont renseignés.
  *
  * input() : la façon moderne de déclarer une entrée de composant (l'inverse
@@ -24,9 +24,16 @@ interface LienReseau {
   styleUrl: './reseaux-sociaux.css'
 })
 export class ReseauxSociaux {
-  // .required : le composant ne peut pas être utilisé sans lui fournir un
-  // contact, et TypeScript le sait (pas de « | undefined » à gérer).
-  contact = input.required<Contact>();
+  /**
+   * .required : le composant ne peut pas être utilisé sans lui fournir de quoi
+   * afficher, et TypeScript le sait (pas de « | undefined » à gérer).
+   *
+   * Le type était `Contact` : le composant exigeait un contact entier alors
+   * qu'il n'en lit que six champs. Depuis les abonnements, il sert aussi à un
+   * compte et à des coordonnées professionnelles. Demander le strict nécessaire
+   * (ReseauxRenseignes) le rend réutilisable sans rien y changer d'autre.
+   */
+  reseaux = input.required<ReseauxRenseignes>();
 
   /**
    * La liste des réseaux effectivement renseignés, construite à partir du
@@ -34,14 +41,14 @@ export class ReseauxSociaux {
    * dans le gabarit : on en écrit un seul, parcouru par @for.
    */
   liens = computed<LienReseau[]>(() => {
-    const c = this.contact();
+    const source = this.reseaux();
 
     return RESEAUX
       .map(reseau => ({
         cle: reseau.cle,
         nom: reseau.nom,
         couleur: reseau.couleur,
-        url: this.versUrl(c[reseau.cle], reseau.cle)
+        url: this.versUrl(source[reseau.cle], reseau.cle)
       }))
       // On écarte les réseaux vides : le gabarit n'a plus de @if à faire.
       .filter(lien => lien.url !== '');

@@ -1,0 +1,23 @@
+<label [for]="identifiant()">{{ libelle() }}</label>
+
+<div class="rangee">
+  <input pInputText [id]="identifiant()" [formControl]="controle()" [placeholder]="placeholder()" />
+
+  <!-- Le vrai sélecteur de fichier est caché : son apparence native (« Parcourir…
+       Aucun fichier sélectionné ») ne se stylise presque pas. Ce bouton-ci le
+       déclenche par .click(), grâce à la variable de gabarit #selecteur. -->
+  <p-button
+    type="button"
+    severity="secondary"
+    [outlined]="true"
+    icon="pi pi-upload"
+    [label]="envoiEnCours() ? 'Envoi en cours…' : 'Choisir une image'"
+    [disabled]="envoiEnCours()"
+    (onClick)="selecteur.click()" />
+
+  <input #selecteur type="file" hidden [accept]="formatsAcceptes" (change)="fichierChoisi($event)" />
+</div>
+
+@if (erreurLocale(); as message) {
+  <p class="erreur-champ" role="alert">{{ message }}</p>
+}

@@ -41,7 +41,8 @@ public class Utilisateur {
 
     private String nomAffichage;
 
-    // Photo de profil : simple URL vers une image hébergée ailleurs.
+    // Photo de profil : une URL — vers une image hébergée ailleurs, ou vers une
+    // image envoyée à ce serveur (/api/images).
     private String photoUrl;
 
     /**
@@ -70,7 +71,95 @@ public class Utilisateur {
     /** Pour que le panel d'administration puisse trier par ancienneté. */
     private Instant dateInscription;
 
+    /**
+     * Coordonnées professionnelles : montrées aux comptes qui suivent celui-ci,
+     * jamais aux autres (VueRelations.voitCoordonnees). Mêmes noms de champs que
+     * dans Contact, pour que le composant Angular des réseaux serve aux deux.
+     *
+     * L'email de CONNEXION (`email`, plus haut) n'en fait pas partie : il ne
+     * figure dans aucun objet montré à un autre compte.
+     */
+    private String emailPro;
+    private String instagram;
+    private String twitter;
+    private String facebook;
+    private String twitch;
+    private String youtube;
+    private String linkedin;
+
+    /**
+     * Compte privé : le suivre demande son accord, et ses publications ne sont
+     * visibles que de ses abonnés acceptés. false par défaut — un compte est
+     * public tant que son titulaire n'a rien demandé d'autre.
+     */
+    @Column(nullable = false)
+    private boolean comptePrive = false;
+
     // Getters et setters
+
+    public String getEmailPro() {
+        return emailPro;
+    }
+
+    public void setEmailPro(String emailPro) {
+        this.emailPro = emailPro;
+    }
+
+    public String getInstagram() {
+        return instagram;
+    }
+
+    public void setInstagram(String instagram) {
+        this.instagram = instagram;
+    }
+
+    public String getTwitter() {
+        return twitter;
+    }
+
+    public void setTwitter(String twitter) {
+        this.twitter = twitter;
+    }
+
+    public String getFacebook() {
+        return facebook;
+    }
+
+    public void setFacebook(String facebook) {
+        this.facebook = facebook;
+    }
+
+    public String getTwitch() {
+        return twitch;
+    }
+
+    public void setTwitch(String twitch) {
+        this.twitch = twitch;
+    }
+
+    public String getYoutube() {
+        return youtube;
+    }
+
+    public void setYoutube(String youtube) {
+        this.youtube = youtube;
+    }
+
+    public String getLinkedin() {
+        return linkedin;
+    }
+
+    public void setLinkedin(String linkedin) {
+        this.linkedin = linkedin;
+    }
+
+    public boolean isComptePrive() {
+        return comptePrive;
+    }
+
+    public void setComptePrive(boolean comptePrive) {
+        this.comptePrive = comptePrive;
+    }
 
     public Long getId() {
         return id;

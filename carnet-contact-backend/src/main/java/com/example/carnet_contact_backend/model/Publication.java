@@ -44,7 +44,8 @@ public class Publication {
     @Column(nullable = false, length = 2000)
     private String contenu;
 
-    // Une adresse d'image, comme la photo de profil : pas d'envoi de fichier.
+    // Une adresse d'image, comme la photo de profil : saisie à la main, ou
+    // obtenue par l'envoi d'un fichier (/api/images).
     @Column(length = 500)
     private String imageUrl;
 

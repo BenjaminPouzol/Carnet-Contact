@@ -15,6 +15,15 @@
           Contacts
         </a>
         <a routerLink="/fil" routerLinkActive="actif">Fil</a>
+        <!-- Les abonnements ont leur propre entree, distincte des contacts :
+             suivre quelqu'un n'est pas l'ajouter a son carnet. La pastille
+             compte les notifications d'activite non lues. -->
+        <a routerLink="/abonnements" routerLinkActive="actif">
+          Abonnements
+          @if (activite.nonLues().length > 0) {
+            <span class="pastille">{{ activite.nonLues().length }}</span>
+          }
+        </a>
         <a routerLink="/messages" routerLinkActive="actif">
           Messages
           @if (messages.nonLus().length > 0) {
@@ -82,8 +91,9 @@
 </main>
 
 <!-- Bandeaux de notification, empilés en bas à droite.
-     Ils vivent dans la coquille et non dans la page Messages : une
-     notification doit pouvoir apparaître quelle que soit la page affichée. -->
+     Ils vivent dans la coquille et non dans une page : une notification doit
+     pouvoir apparaître quelle que soit la page affichée. Chaque bandeau porte
+     son propre lien — la messagerie, ou la page Abonnements. -->
 @if (notifications.bandeaux().length > 0) {
   <div class="pile-bandeaux" role="status" aria-live="polite">
     @for (bandeau of notifications.bandeaux(); track bandeau.id) {
@@ -92,7 +102,7 @@
           <strong>{{ bandeau.titre }}</strong>
           <span class="bandeau-corps">{{ bandeau.corps }}</span>
         </div>
-        <a routerLink="/messages" class="bandeau-lien">Ouvrir</a>
+        <a [routerLink]="bandeau.lien" class="bandeau-lien">Ouvrir</a>
         <button
           type="button"
           class="bandeau-fermer"

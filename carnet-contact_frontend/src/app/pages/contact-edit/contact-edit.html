@@ -27,10 +27,10 @@
             <p class="erreur-champ">Format d'adresse invalide.</p>
           }
         </div>
-        <div>
-          <label for="photoUrl">Photo (URL)</label>
-          <input pInputText id="photoUrl" formControlName="photoUrl" />
-        </div>
+        <app-champ-image
+          identifiant="photoUrl"
+          libelle="Photo"
+          [controle]="contactForm.controls.photoUrl" />
       </div>
 
       <h3 class="titre-reseaux">Réseaux sociaux</h3>
